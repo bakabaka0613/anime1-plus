@@ -500,15 +500,20 @@ function panelRowsHtml(list) {
         const t = formatTime((eps[target.ep] || {}).currentTime || 0);
         link = `<a href="${epUrl(target.ep)}">繼續看 第${target.ep}集 (${t})</a>`;
       } else {
-        // 已看完：只有「下一集確實在集數清單裡」才顯示看下一集，否則視為已看完
+        // 已看完最後觀看的集 → 看下一集
         const nextEp = target.ep;
         const nextItem =
           x.meta && Array.isArray(x.meta.episodes)
             ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp))
             : null;
-        link = nextItem
-          ? `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`
-          : '<span class="a1p-sub">已看完</span>';
+        if (nextItem) {
+          link = `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`;
+        } else if (x.newEps) {
+          // 有新集、但本機 meta 尚未記錄該集單集頁（沒再進過分類頁）→ 連到分類頁看新集
+          link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;
+        } else {
+          link = '<span class="a1p-sub">已看完</span>';
+        }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';
       return `<div class="a1p-row${x.newEps ? ' a1p-row-new' : ''}">
