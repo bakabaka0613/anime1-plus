@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.19
+// @version      0.5.20
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -573,20 +573,21 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     }
     return w;
   }
-  function toast(msg, { actionLabel, onAction, duration = 4e3 } = {}) {
+  function toast(msg, { actionLabel, onAction, actions, duration = 4e3 } = {}) {
     injectStyles();
     const el = document.createElement("div");
     el.className = "a1p-toast";
     const span = document.createElement("span");
     span.textContent = msg;
     el.appendChild(span);
-    if (actionLabel) {
+    const list = actions && actions.length ? actions : actionLabel ? [{ label: actionLabel, onAction }] : [];
+    for (const a of list) {
       const btn = document.createElement("button");
       btn.className = "a1p-btn";
-      btn.textContent = actionLabel;
+      btn.textContent = a.label;
       btn.onclick = () => {
         try {
-          onAction && onAction();
+          a.onAction && a.onAction();
         } finally {
           el.remove();
         }
@@ -1102,11 +1103,19 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (!url) return;
       let cancelled = false;
       toast("即將播放下一集…", {
-        actionLabel: "取消",
         duration: 5e3,
-        onAction: () => {
-          cancelled = true;
-        }
+        actions: [
+          {
+            label: "立即播放",
+            onAction: () => {
+              cancelled = true;
+              location.href = url;
+            }
+          },
+          { label: "取消", onAction: () => {
+            cancelled = true;
+          } }
+        ]
       });
       setTimeout(() => {
         if (!cancelled) location.href = url;

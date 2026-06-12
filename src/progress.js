@@ -281,11 +281,17 @@ export async function initEpisodePage(ctx) {
     if (!url) return;
     let cancelled = false;
     toast('即將播放下一集…', {
-      actionLabel: '取消',
       duration: 5000,
-      onAction: () => {
-        cancelled = true;
-      },
+      actions: [
+        {
+          label: '立即播放',
+          onAction: () => {
+            cancelled = true; // 防 5 秒後又跳一次
+            location.href = url;
+          },
+        },
+        { label: '取消', onAction: () => { cancelled = true; } },
+      ],
     });
     setTimeout(() => {
       if (!cancelled) location.href = url;

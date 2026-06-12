@@ -151,20 +151,22 @@ function toastWrap() {
   }
   return w;
 }
-export function toast(msg, { actionLabel, onAction, duration = 4000 } = {}) {
+export function toast(msg, { actionLabel, onAction, actions, duration = 4000 } = {}) {
   injectStyles();
   const el = document.createElement('div');
   el.className = 'a1p-toast';
   const span = document.createElement('span');
   span.textContent = msg;
   el.appendChild(span);
-  if (actionLabel) {
+  // 支援多顆按鈕（actions）；保留單顆 actionLabel/onAction 的舊用法。
+  const list = actions && actions.length ? actions : actionLabel ? [{ label: actionLabel, onAction }] : [];
+  for (const a of list) {
     const btn = document.createElement('button');
     btn.className = 'a1p-btn';
-    btn.textContent = actionLabel;
+    btn.textContent = a.label;
     btn.onclick = () => {
       try {
-        onAction && onAction();
+        a.onAction && a.onAction();
       } finally {
         el.remove();
       }
