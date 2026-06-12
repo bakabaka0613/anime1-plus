@@ -465,9 +465,16 @@ function renderPanel(panel) {
         const t = formatTime((eps[resumeEp] || {}).currentTime || 0);
         link = `<a href="${epUrl(resumeEp)}">繼續看 第${resumeEp}集 (${t})</a>`;
       } else {
+        // 全部已看完：只有「下一集確實在集數清單裡」才顯示看下一集，否則視為已看完
         const maxEp = Math.max(...Object.keys(eps).map(Number).filter((n) => !Number.isNaN(n)));
-        const nextEp = Number.isFinite(maxEp) ? maxEp + 1 : 1;
-        link = `<a href="${epUrl(nextEp)}">看下一集 第${nextEp}集</a>`;
+        const nextEp = maxEp + 1;
+        const nextItem =
+          x.meta && Array.isArray(x.meta.episodes)
+            ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp))
+            : null;
+        link = nextItem
+          ? `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`
+          : '<span class="a1p-sub">已看完</span>';
       }
       return `<div class="a1p-row">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
