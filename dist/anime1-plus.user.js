@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.5
+// @version      0.4.6
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1209,6 +1209,31 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       }
     }
   }
+  async function getSubjectAliases(id) {
+    try {
+      const res = await gmFetch({
+        method: "GET",
+        url: `https://api.bgm.tv/v0/subjects/${id}`,
+        headers: { Accept: "application/json", "User-Agent": UA }
+      });
+      if (res.status < 200 || res.status >= 300) return [];
+      const json = JSON.parse(res.responseText);
+      const out = [];
+      if (json.name) out.push(json.name);
+      if (json.name_cn) out.push(json.name_cn);
+      if (Array.isArray(json.infobox)) {
+        for (const f of json.infobox) {
+          if (!/别名|別名|中文名|英文名|英文|日文|罗马|羅馬/.test(f.key || "")) continue;
+          const v = f.value;
+          if (typeof v === "string") out.push(v);
+          else if (Array.isArray(v)) v.forEach((it) => out.push(it && (it.v || it.value) || it));
+        }
+      }
+      return out.filter((s) => typeof s === "string" && s.trim());
+    } catch {
+      return [];
+    }
+  }
   function coverUrl(subject) {
     const img = subject && subject.images;
     if (!img) return null;
@@ -1269,6 +1294,16 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
 
   // src/cover.js
+  async function matchByAlias(parsed, ranked) {
+    for (const r of ranked.slice(0, 3)) {
+      const aliases = await getSubjectAliases(r.subject.id);
+      for (const al of aliases) {
+        const s = similarity(parsed.baseName, parseTitle(al).baseName || al);
+        if (s >= 0.85) return r;
+      }
+    }
+    return null;
+  }
   function toCoverData(scored, manual = false) {
     const s = scored.subject;
     return {
@@ -1280,17 +1315,25 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       manual
     };
   }
-  async function lookupCover({ animeKey, title, year }) {
+  async function lookupCover({ animeKey, title, year, deep = false }) {
     const parsed = parseTitle(title);
     const cached = getCover(animeKey);
     if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
     const subjects = await searchAnime(parsed.baseName);
-    const { ranked, best, confident } = rankCandidates(parsed, year, subjects);
+    let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
+    if (deep && !confident && ranked.length) {
+      const aliasHit = await matchByAlias(parsed, ranked);
+      if (aliasHit) {
+        best = aliasHit;
+        confident = true;
+        ranked = [aliasHit, ...ranked.filter((r) => r !== aliasHit)];
+      }
+    }
     return { cached: false, parsed, data: confident && best ? toCoverData(best) : null, ranked, confident };
   }
   async function resolveCover({ animeKey, title, year, mountEl }) {
     if (!mountEl) return;
-    const res = await lookupCover({ animeKey, title, year });
+    const res = await lookupCover({ animeKey, title, year, deep: true });
     const { parsed } = res;
     const local = title;
     const showPicker = (ranked) => {

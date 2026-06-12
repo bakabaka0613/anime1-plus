@@ -66,6 +66,33 @@ export async function searchAnime(keyword, limit = 10) {
   }
 }
 
+// 取某條目的所有名稱別名（infobox 的「别名/中文名/英文名」+ name/name_cn），供深度匹配
+export async function getSubjectAliases(id) {
+  try {
+    const res = await gmFetch({
+      method: 'GET',
+      url: `https://api.bgm.tv/v0/subjects/${id}`,
+      headers: { Accept: 'application/json', 'User-Agent': UA },
+    });
+    if (res.status < 200 || res.status >= 300) return [];
+    const json = JSON.parse(res.responseText);
+    const out = [];
+    if (json.name) out.push(json.name);
+    if (json.name_cn) out.push(json.name_cn);
+    if (Array.isArray(json.infobox)) {
+      for (const f of json.infobox) {
+        if (!/别名|別名|中文名|英文名|英文|日文|罗马|羅馬/.test(f.key || '')) continue;
+        const v = f.value;
+        if (typeof v === 'string') out.push(v);
+        else if (Array.isArray(v)) v.forEach((it) => out.push((it && (it.v || it.value)) || it));
+      }
+    }
+    return out.filter((s) => typeof s === 'string' && s.trim());
+  } catch {
+    return [];
+  }
+}
+
 // 從 subject 取最佳可用封面 URL
 export function coverUrl(subject) {
   const img = subject && subject.images;
