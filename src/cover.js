@@ -6,15 +6,17 @@ import { similarity, toSimplified } from './util.js';
 import { getCover, setCover } from './store.js';
 import { renderCoverCard, renderCoverPicker } from './ui.js';
 
-// 深度比對：對前幾名候選抓 Bangumi 別名，若與解析名高度相符則回傳該候選（解決別名才相符的動畫）。
-async function matchByAlias(parsed, ranked) {
-  // 別名比對才做繁簡統一（局部），閾值收緊避免誤中
+// 深度比對：用「Bangumi 搜尋 relevance 前幾名」（非我重排後）抓別名，若與解析名高度相符則採用。
+// 因為正確條目的 name/name_cn 可能是日文或不同譯名（nameScore 低被排後），但 Bangumi relevance 會排前。
+async function matchByAlias(parsed, subjects) {
   const target = toSimplified(parsed.baseName);
-  for (const r of ranked.slice(0, 3)) {
-    const aliases = await getSubjectAliases(r.subject.id);
+  for (const subject of subjects.slice(0, 6)) {
+    const aliases = await getSubjectAliases(subject.id);
     for (const al of aliases) {
       const cand = toSimplified(parseTitle(al).baseName || al);
-      if (similarity(target, cand) >= 0.9) return r;
+      if (similarity(target, cand) >= 0.9) {
+        return { subject, score: 1, breakdown: { name: 1, year: 0.5, season: 1 } };
+      }
     }
   }
   return null;
@@ -43,13 +45,13 @@ export async function lookupCover({ animeKey, title, year, deep = false }) {
   if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
   const subjects = await searchAnime(parsed.baseName);
   let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
-  // 信心不足時，深度比對別名（只在分類頁 deep 模式做，避免列表頁大量請求）
-  if (deep && !confident && ranked.length) {
-    const aliasHit = await matchByAlias(parsed, ranked);
+  // 信心不足時，深度比對別名（用搜尋 relevance 順序，只在分類頁 deep 模式做，避免列表頁大量請求）
+  if (deep && !confident && subjects.length) {
+    const aliasHit = await matchByAlias(parsed, subjects);
     if (aliasHit) {
       best = aliasHit;
       confident = true;
-      ranked = [aliasHit, ...ranked.filter((r) => r !== aliasHit)];
+      ranked = [aliasHit, ...ranked.filter((r) => r.subject.id !== aliasHit.subject.id)];
     }
   }
   return { cached: false, parsed, data: confident && best ? toCoverData(best) : null, ranked, confident };

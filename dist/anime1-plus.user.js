@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.7
+// @version      0.5.8
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1454,13 +1454,15 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
 
   // src/cover.js
-  async function matchByAlias(parsed, ranked) {
+  async function matchByAlias(parsed, subjects) {
     const target = toSimplified(parsed.baseName);
-    for (const r2 of ranked.slice(0, 3)) {
-      const aliases = await getSubjectAliases(r2.subject.id);
+    for (const subject of subjects.slice(0, 6)) {
+      const aliases = await getSubjectAliases(subject.id);
       for (const al of aliases) {
         const cand = toSimplified(parseTitle(al).baseName || al);
-        if (similarity(target, cand) >= 0.9) return r2;
+        if (similarity(target, cand) >= 0.9) {
+          return { subject, score: 1, breakdown: { name: 1, year: 0.5, season: 1 } };
+        }
       }
     }
     return null;
@@ -1482,12 +1484,12 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
     const subjects = await searchAnime(parsed.baseName);
     let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
-    if (deep && !confident && ranked.length) {
-      const aliasHit = await matchByAlias(parsed, ranked);
+    if (deep && !confident && subjects.length) {
+      const aliasHit = await matchByAlias(parsed, subjects);
       if (aliasHit) {
         best = aliasHit;
         confident = true;
-        ranked = [aliasHit, ...ranked.filter((r2) => r2 !== aliasHit)];
+        ranked = [aliasHit, ...ranked.filter((r2) => r2.subject.id !== aliasHit.subject.id)];
       }
     }
     return { cached: false, parsed, data: confident && best ? toCoverData(best) : null, ranked, confident };
