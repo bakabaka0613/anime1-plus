@@ -110,6 +110,13 @@ export function clearAnime(catId) {
   saveRoot(root);
 }
 
+// 清除指定動畫的封面快取（保留其觀看/追番資料）
+export function clearCover(catId) {
+  const root = loadRoot();
+  delete root.covers[catId];
+  saveRoot(root);
+}
+
 // 清除所有封面快取（保留觀看/追番與設定）
 export function clearCovers() {
   const root = loadRoot();

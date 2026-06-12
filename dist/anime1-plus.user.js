@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.31
+// @version      0.5.32
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -294,6 +294,11 @@
     delete root.covers[catId];
     delete root.watch[catId];
     delete root.meta[catId];
+    saveRoot(root);
+  }
+  function clearCover(catId) {
+    const root = loadRoot();
+    delete root.covers[catId];
     saveRoot(root);
   }
   function clearCovers() {
@@ -2025,8 +2030,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const opts = [];
     if (currentAnimeKey) {
       opts.push(["清除此動畫的觀看記錄", () => clearAnime(currentAnimeKey)]);
+      opts.push(["清除此動畫封面快取", () => clearCover(currentAnimeKey)]);
+    } else {
+      opts.push(["清除所有封面快取", clearCovers]);
     }
-    opts.push(["清除封面快取", clearCovers]);
     opts.push(["清除追番記錄（所有觀看進度）", clearWatch]);
     opts.push(["還原所有設定為預設", clearSettings]);
     opts.push(["清除所有資料（完全重置）", clearAll]);

@@ -24,7 +24,7 @@ import {
   collapseToSinglePlayer,
   toast,
 } from './ui.js';
-import { exportAll, importAll, getSettings, setSettings, clearAnime, clearCovers, clearWatch, clearSettings, clearAll } from './store.js';
+import { exportAll, importAll, getSettings, setSettings, clearAnime, clearCover, clearCovers, clearWatch, clearSettings, clearAll } from './store.js';
 
 let currentAnimeKey = null;
 
@@ -152,8 +152,11 @@ function openClearMenu() {
   const opts = [];
   if (currentAnimeKey) {
     opts.push(['清除此動畫的觀看記錄', () => clearAnime(currentAnimeKey)]);
+    // 動畫選集/單集頁 → 只清這部的封面；主頁（無 currentAnimeKey）→ 清全部封面
+    opts.push(['清除此動畫封面快取', () => clearCover(currentAnimeKey)]);
+  } else {
+    opts.push(['清除所有封面快取', clearCovers]);
   }
-  opts.push(['清除封面快取', clearCovers]);
   opts.push(['清除追番記錄（所有觀看進度）', clearWatch]);
   opts.push(['還原所有設定為預設', clearSettings]);
   opts.push(['清除所有資料（完全重置）', clearAll]);
