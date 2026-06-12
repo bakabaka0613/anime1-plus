@@ -475,14 +475,13 @@ async function renderPanel(panel) {
   }
   // 先用現有資料即時渲染（依最後觀看排序），避免等待網路造成空白
   panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
-  // 再抓即時最新集數，標出「已追平後又出新集」者並置頂（其餘維持原順序）
+  // 再抓即時最新集數：標出「已追平後又出新集」者並置頂，並帶上「連載中」狀態（供「已看完/已到最新進度」區分）
   const latestMap = await fetchLatestEpMap();
-  let any = false;
   for (const x of list) {
-    x.newEps = caughtUpNewEpisodes(latestMap[x.catId], x.episodes, x.meta && x.meta.maxEpSeen);
-    if (x.newEps) any = true;
+    const info = latestMap[x.catId];
+    x.newEps = caughtUpNewEpisodes(info ? info.ep : null, x.episodes, x.meta && x.meta.maxEpSeen);
+    x.airing = !!(info && info.airing);
   }
-  if (!any) return; // 無更新 → 維持先前渲染
   list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0)); // 穩定排序：有更新置頂，組內維持原序
   panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
 }
@@ -530,7 +529,10 @@ function panelRowsHtml(list) {
           // 有新集、但本機 meta 尚未記錄該集單集頁（沒再進過分類頁）→ 連到分類頁看新集
           link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;
         } else {
-          link = '<span class="a1p-sub">已看完</span>';
+          // 連載中（首頁標「連載中」）→ 已追到最新進度；否則該番已完結 → 已看完
+          link = x.airing
+            ? '<span class="a1p-sub">已到最新進度</span>'
+            : '<span class="a1p-sub">已看完</span>';
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';

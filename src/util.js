@@ -87,6 +87,11 @@ export function parseLatestEp(text) {
   return nums ? Math.max(...nums.map(Number)) : null;
 }
 
+// 首頁「集數」欄是否標示「連載中」（仍在更新）。供追番清單區分「已到最新進度」與「已看完」。
+export function isAiring(text) {
+  return /連載中/.test(String(text || ''));
+}
+
 // 依「最新集數 vs 已標記完成的集」判斷首頁是否該顯示更新提醒。
 // 觸發條件：必須有已完成（done）的集，且最新集數大於最大已完成集 → 回傳新增集數差，否則 null。
 export function pendingNewEpisodes(latestEp, watch) {

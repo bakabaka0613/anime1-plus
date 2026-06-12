@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget } from '../src/util.js';
+import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring } from '../src/util.js';
 
 // ---- parseLatestEp：解析首頁「集數」欄 → 最新一般集數 ----
 test('連載中(N) 取括號內集數', () => {
@@ -35,6 +35,21 @@ test('純特殊集（無一般集數）→ null', () => {
   assert.equal(parseLatestEp('-'), null);
   assert.equal(parseLatestEp(''), null);
   assert.equal(parseLatestEp(null), null);
+});
+
+// ---- isAiring：首頁「集數」欄是否標示連載中 ----
+test('連載中 → true', () => {
+  assert.equal(isAiring('連載中(11)'), true);
+  assert.equal(isAiring('連載中(04 EP03)'), true);
+});
+
+test('已完結／特殊集 → false', () => {
+  assert.equal(isAiring('1-8'), false);
+  assert.equal(isAiring('1-12+OVA'), false);
+  assert.equal(isAiring('劇場版'), false);
+  assert.equal(isAiring('-'), false);
+  assert.equal(isAiring(''), false);
+  assert.equal(isAiring(null), false);
 });
 
 // ---- pendingNewEpisodes：最新集數 vs 已完成集 → 該提醒的新增集數 ----
