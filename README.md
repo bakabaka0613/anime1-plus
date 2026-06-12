@@ -51,8 +51,34 @@
 - **逐集合併**：兩端看不同集會按時間戳（`watchedAt`）逐集合併，**互不覆蓋**；流程為 `pull → 合併 → push`。
 - **自動同步**：開啟動畫頁時先拉一次遠端；之後有新觀看進度會自動（約數秒 debounce）上傳。也可從油猴選單「☁️ 立即同步」。
 - **設定方式**：油猴選單「☁️ 設定多端同步」→ 貼上 **GitHub Personal Access Token**，腳本會自動建立（或找回既有的）私有 gist 並記住 id。其他裝置貼**同一個 token** 即會指向同一份。
-- **Token 權限**：建議用 [fine-grained PAT](https://github.com/settings/tokens?type=beta)，**只勾 Gist 的讀寫權限**即可，把風險面降到最小。
+- **Token 權限**：建議用 [fine-grained PAT](https://github.com/settings/personal-access-tokens/new)，**只勾 Gist 的讀寫權限**即可，把風險面降到最小（詳細步驟見下）。
 - **隱私 / 安全**：進度會存到你的私有 gist（在 GitHub 上）。Token 只存在本機 Tampermonkey，且**「匯出資料 (JSON)」不會包含 token**，可安心分享匯出檔。
+
+#### 如何產生 GitHub Token（詳細步驟）
+
+需要一個有 **Gist 讀寫權限**的 token，建議用 **fine-grained**（細粒度）token，權限最小最安全。GitHub 介面沒有中文，所以下面要點選的選項名稱**保留英文**，照著畫面對即可：
+
+1. 登入 GitHub，開啟 **<https://github.com/settings/personal-access-tokens/new>**
+   （手動路徑：右上頭像 → **Settings** → 左側最下 **Developer settings** → **Personal access tokens** → **Fine-grained tokens** → **Generate new token**）。
+2. **Token name**：隨意取名，例如 `anime1-plus-sync`，方便日後辨識。
+3. **Expiration**：自選有效期。**到期後同步會失效**，需重新產生並重貼一次 token（見下方「更新／撤銷」）。想省事就設長一點。
+4. **Resource owner**：選你自己的帳號。
+5. **Repository access**：Gist 不屬於任何 repo，這項**不影響**，保持預設或選 **Public Repositories (read-only)** 都行。
+6. **Permissions** → 展開 **Account permissions**（⚠️ 不是 Repository permissions）→ 找到 **Gists** → 把它的 Access 設成 **Read and write**。
+   - 只需要這一項權限。Gists 在 **Account permissions** 底下；Repository permissions 裡沒有 Gist 選項。
+7. 拉到最下點 **Generate token**，然後**複製產生的 token**（`github_pat_…` 開頭）。
+   - ⚠️ token **只會完整顯示這一次**，離開頁面就再也看不到，請先複製好。
+8. 回到 anime1 頁面，油猴選單 →「☁️ 設定多端同步」→ 貼上 token → 確定。看到「同步已啟用並完成首次同步 ✓」就成功了。
+9. **其他裝置**：在每台裝置／瀏覽器的同步設定貼上**同一個 token**，就會全部接到同一份 gist，開始互相同步。
+
+> **classic token 也可以**：若慣用 [classic token](https://github.com/settings/tokens)，產生時只勾 **`gist`** 這一個 scope 即可，效果相同。
+
+#### 更新 / 撤銷 / 停用
+
+- **撤銷 token**（不再讓它能存取）：到 GitHub 的 token 列表 **Delete / Revoke**，立即失效。
+- **本機刪除 token**：選單「☁️ 同步設定（變更 token）…」→ **清空輸入框並按確定** = 刪除本機 token 並停用同步（會保留 gist id，日後重貼 token 即接回同一份資料）。
+- **token 過期或更換**：重新產生一個（步驟同上），用「☁️ 同步設定（變更 token）…」貼上即可。若舊 gist 已被刪或換了帳號，腳本會自動找回既有或新建一份，不會卡住。
+- **暫時停用**：選單「✓ 多端同步（點此停用）」。
 
 ## 開發
 
