@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 import { mkdirSync } from 'node:fs';
 
-const VERSION = '0.3.5';
+const VERSION = '0.3.6';
 const REPO = 'bakabaka0613/anime1-plus';
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/dist/anime1-plus.user.js`;
 

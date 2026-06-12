@@ -25,22 +25,29 @@ let seekHotkeyBound = false;
 function setupSeekHotkey() {
   if (seekHotkeyBound) return;
   seekHotkeyBound = true;
-  window.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    if (!getSettings().shortcuts) return;
-    const tag = (e.target && e.target.tagName) || '';
-    if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
-    const v = activeVideo();
-    if (!v) return;
-    const sec = Number(getSettings().seekSeconds) || 10;
-    const d = e.key === 'ArrowLeft' ? -sec : sec;
-    try {
-      v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
+  // capture 階段：搶在 video.js 自己的方向鍵 handler 之前攔截並阻止它，避免被固定秒數蓋過
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      if (!getSettings().shortcuts) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+      const v = activeVideo();
+      if (!v) return;
       e.preventDefault();
-    } catch {
-      /* ignore */
-    }
-  });
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const sec = Number(getSettings().seekSeconds) || 10;
+      const d = e.key === 'ArrowLeft' ? -sec : sec;
+      try {
+        v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
+      } catch {
+        /* ignore */
+      }
+    },
+    true,
+  );
 }
 
 // ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
