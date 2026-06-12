@@ -24,7 +24,7 @@ import {
   collapseToSinglePlayer,
   toast,
 } from './ui.js';
-import { exportAll, importAll, getSettings, setSettings, clearAnime } from './store.js';
+import { exportAll, importAll, getSettings, setSettings, clearAnime, clearAutoCovers } from './store.js';
 
 let currentAnimeKey = null;
 
@@ -135,6 +135,10 @@ function registerMenu() {
       toast('已清除此動畫記錄，重新整理生效', { duration: 3000 });
     });
   }
+  GM_registerMenuCommand('♻️ 重新比對自動封面（保留手選）', () => {
+    const n = clearAutoCovers();
+    toast(`已清除 ${n} 筆自動封面，重新整理後重新比對`, { duration: 3000 });
+  });
   GM_registerMenuCommand('🧹 清除所有資料（重置）', () => {
     if (confirm('確定清除所有封面快取與觀看記錄？此動作無法復原。')) {
       importAll('{}', { merge: false });

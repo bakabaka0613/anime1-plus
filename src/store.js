@@ -102,6 +102,20 @@ export function setSettings(patch) {
 }
 
 // ---- 維護 ----
+// 清除「自動比對」的封面快取（保留手選 manual），供升級後修正舊誤判
+export function clearAutoCovers() {
+  const root = loadRoot();
+  let n = 0;
+  for (const k of Object.keys(root.covers)) {
+    if (!root.covers[k].manual) {
+      delete root.covers[k];
+      n++;
+    }
+  }
+  saveRoot(root);
+  return n;
+}
+
 export function clearAnime(catId) {
   const root = loadRoot();
   delete root.covers[catId];
