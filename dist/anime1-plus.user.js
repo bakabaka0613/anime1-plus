@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.30
+// @version      0.5.31
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -295,6 +295,25 @@
     delete root.watch[catId];
     delete root.meta[catId];
     saveRoot(root);
+  }
+  function clearCovers() {
+    const root = loadRoot();
+    root.covers = {};
+    saveRoot(root);
+  }
+  function clearWatch() {
+    const root = loadRoot();
+    root.watch = {};
+    root.meta = {};
+    saveRoot(root);
+  }
+  function clearSettings() {
+    const root = loadRoot();
+    root.settings = { ...DEFAULT_SETTINGS };
+    saveRoot(root);
+  }
+  function clearAll() {
+    saveRoot({ covers: {}, watch: {}, meta: {}, settings: { ...DEFAULT_SETTINGS } });
   }
   function exportAll() {
     return JSON.stringify(loadRoot(), null, 2);
@@ -2000,18 +2019,31 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         toast(`${label}：${!on ? "開啟" : "關閉"}（選單下次開啟更新）`, { duration: 2500 });
       });
     }
+    GM_registerMenuCommand("🧹 清除資料…", openClearMenu);
+  }
+  function openClearMenu() {
+    const opts = [];
     if (currentAnimeKey) {
-      GM_registerMenuCommand("🗑 清除此動畫的觀看記錄", () => {
-        clearAnime(currentAnimeKey);
-        toast("已清除此動畫記錄，重新整理生效", { duration: 3e3 });
-      });
+      opts.push(["清除此動畫的觀看記錄", () => clearAnime(currentAnimeKey)]);
     }
-    GM_registerMenuCommand("🧹 清除所有資料（重置）", () => {
-      if (confirm("確定清除所有封面快取與觀看記錄？此動作無法復原。")) {
-        importAll("{}", { merge: false });
-        toast("已重置，重新整理生效", { duration: 3e3 });
-      }
-    });
+    opts.push(["清除封面快取", clearCovers]);
+    opts.push(["清除追番記錄（所有觀看進度）", clearWatch]);
+    opts.push(["還原所有設定為預設", clearSettings]);
+    opts.push(["清除所有資料（完全重置）", clearAll]);
+    const menu = opts.map(([label2], i) => `${i + 1}. ${label2}`).join("\n");
+    const v = prompt(`輸入數字選擇要清除的資料：
+
+${menu}`, "");
+    if (v == null) return;
+    const n = parseInt(String(v).trim(), 10);
+    if (!(n >= 1 && n <= opts.length)) {
+      toast("未選擇有效項目", { duration: 2500 });
+      return;
+    }
+    const [label, action] = opts[n - 1];
+    if (!confirm(`確定要「${label}」？此動作無法復原。`)) return;
+    action();
+    toast(`已${label}，重新整理生效`, { duration: 3e3 });
   }
   function main() {
     injectStyles();

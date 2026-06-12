@@ -24,7 +24,7 @@ import {
   collapseToSinglePlayer,
   toast,
 } from './ui.js';
-import { exportAll, importAll, getSettings, setSettings, clearAnime } from './store.js';
+import { exportAll, importAll, getSettings, setSettings, clearAnime, clearCovers, clearWatch, clearSettings, clearAll } from './store.js';
 
 let currentAnimeKey = null;
 
@@ -143,18 +143,33 @@ function registerMenu() {
       toast(`${label}：${!on ? '開啟' : '關閉'}（選單下次開啟更新）`, { duration: 2500 });
     });
   }
+  GM_registerMenuCommand('🧹 清除資料…', openClearMenu);
+}
+
+// 統一的清除入口：輸入數字選擇要清除的項目。選項依情境動態組裝
+// （在動畫頁才出現「清除此動畫」），所以編號與清單文字一併產生、避免錯位。
+function openClearMenu() {
+  const opts = [];
   if (currentAnimeKey) {
-    GM_registerMenuCommand('🗑 清除此動畫的觀看記錄', () => {
-      clearAnime(currentAnimeKey);
-      toast('已清除此動畫記錄，重新整理生效', { duration: 3000 });
-    });
+    opts.push(['清除此動畫的觀看記錄', () => clearAnime(currentAnimeKey)]);
   }
-  GM_registerMenuCommand('🧹 清除所有資料（重置）', () => {
-    if (confirm('確定清除所有封面快取與觀看記錄？此動作無法復原。')) {
-      importAll('{}', { merge: false });
-      toast('已重置，重新整理生效', { duration: 3000 });
-    }
-  });
+  opts.push(['清除封面快取', clearCovers]);
+  opts.push(['清除追番記錄（所有觀看進度）', clearWatch]);
+  opts.push(['還原所有設定為預設', clearSettings]);
+  opts.push(['清除所有資料（完全重置）', clearAll]);
+
+  const menu = opts.map(([label], i) => `${i + 1}. ${label}`).join('\n');
+  const v = prompt(`輸入數字選擇要清除的資料：\n\n${menu}`, '');
+  if (v == null) return; // 取消
+  const n = parseInt(String(v).trim(), 10);
+  if (!(n >= 1 && n <= opts.length)) {
+    toast('未選擇有效項目', { duration: 2500 });
+    return;
+  }
+  const [label, action] = opts[n - 1];
+  if (!confirm(`確定要「${label}」？此動作無法復原。`)) return;
+  action();
+  toast(`已${label}，重新整理生效`, { duration: 3000 });
 }
 
 function main() {

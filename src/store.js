@@ -110,6 +110,33 @@ export function clearAnime(catId) {
   saveRoot(root);
 }
 
+// 清除所有封面快取（保留觀看/追番與設定）
+export function clearCovers() {
+  const root = loadRoot();
+  root.covers = {};
+  saveRoot(root);
+}
+
+// 清除所有追番記錄：觀看進度（watch）＋追番輔助資料（meta）。封面與設定保留。
+export function clearWatch() {
+  const root = loadRoot();
+  root.watch = {};
+  root.meta = {};
+  saveRoot(root);
+}
+
+// 還原所有設定為預設值（不動封面/觀看資料）
+export function clearSettings() {
+  const root = loadRoot();
+  root.settings = { ...DEFAULT_SETTINGS };
+  saveRoot(root);
+}
+
+// 完全重置：封面＋觀看＋追番＋設定全清
+export function clearAll() {
+  saveRoot({ covers: {}, watch: {}, meta: {}, settings: { ...DEFAULT_SETTINGS } });
+}
+
 export function exportAll() {
   return JSON.stringify(loadRoot(), null, 2);
 }
