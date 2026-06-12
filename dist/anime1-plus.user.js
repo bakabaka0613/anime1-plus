@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.27
+// @version      0.5.28
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -851,7 +851,6 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       text = `上次看完 <b>第 ${escapeHtml(String(lastEp))} 話</b>`;
       const u = findUrl(target.ep);
       if (u) link = `<a class="a1p-btn" href="${u}">▶ 看下一集 第 ${escapeHtml(String(target.ep))} 話</a>`;
-      else if (catUrl) link = `<a class="a1p-btn" href="${catUrl}">▶ 看最新集</a>`;
     }
     const old = document.querySelector(".a1p-last");
     if (old) old.remove();

@@ -404,11 +404,11 @@ export function renderLastWatched(animeKey, mountEl) {
     const u = findUrl(target.ep) || catUrl;
     if (u) link = `<a class="a1p-btn" href="${u}">▶ 繼續看</a>`;
   } else {
-    // 最後看的已看完 → 指向下一集；meta 還沒有下一集（沒再進分類頁）則退回分類頁看最新集
+    // 最後看的已看完 → 有下一集才顯示按鈕；看完最新集（無下一集）則不顯示。
+    // 分類頁的 meta.episodes 由 markCategoryEpisodes 先以「當前頁即時集數」寫入，故找不到即代表沒有下一集。
     text = `上次看完 <b>第 ${escapeHtml(String(lastEp))} 話</b>`;
     const u = findUrl(target.ep);
     if (u) link = `<a class="a1p-btn" href="${u}">▶ 看下一集 第 ${escapeHtml(String(target.ep))} 話</a>`;
-    else if (catUrl) link = `<a class="a1p-btn" href="${catUrl}">▶ 看最新集</a>`;
   }
 
   const old = document.querySelector('.a1p-last');
