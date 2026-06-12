@@ -51,6 +51,38 @@ function setupSeekHotkey() {
   );
 }
 
+// ---- +/- 調整播放速度（分類頁與單集頁共用，對正在播放的播放器）----
+let rateHotkeyBound = false;
+function setupRateHotkey() {
+  if (rateHotkeyBound) return;
+  rateHotkeyBound = true;
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (!getSettings().shortcuts) return;
+      let delta = 0;
+      if (e.key === '+' || e.key === '=') delta = 0.25;
+      else if (e.key === '-' || e.key === '_') delta = -0.25;
+      else return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+      const v = activeVideo();
+      if (!v) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      const r = Math.max(0.25, Math.min(4, (v.playbackRate || 1) + delta));
+      try {
+        v.playbackRate = r;
+      } catch {
+        /* ignore */
+      }
+      toast(`速度 ${r}x`, { duration: 1200 });
+    },
+    true,
+  );
+}
+
 // ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
 let webFullHotkeyBound = false;
 
@@ -147,6 +179,7 @@ export async function initEpisodePage(ctx) {
   addWebFullButton(video);
   setupWebFullHotkey();
   setupSeekHotkey();
+  setupRateHotkey();
 
   // ---- 續播 ----
   if (settings.resume && ep != null) {
@@ -321,6 +354,7 @@ export function initCategoryPlayback(animeKey) {
   scan();
   setupWebFullHotkey();
   setupSeekHotkey();
+  setupRateHotkey();
   // 播放器多為點擊後 JS 動態插入 <video> → 持續監聽
   new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('pagehide', () => document.querySelectorAll('video').forEach((v) => {
@@ -354,16 +388,7 @@ function bindShortcuts(video, ctx) {
         if (url) location.href = url;
         break;
       }
-      case '+':
-      case '=':
-        video.playbackRate = Math.min(4, video.playbackRate + 0.25);
-        toast(`速度 ${video.playbackRate}x`, { duration: 1200 });
-        break;
-      case '-':
-      case '_':
-        video.playbackRate = Math.max(0.25, video.playbackRate - 0.25);
-        toast(`速度 ${video.playbackRate}x`, { duration: 1200 });
-        break;
+      // +/- 調速由全域 setupRateHotkey 處理
       default:
         break;
     }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.3.9
+// @version      0.4.0
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -732,6 +732,35 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       true
     );
   }
+  var rateHotkeyBound = false;
+  function setupRateHotkey() {
+    if (rateHotkeyBound) return;
+    rateHotkeyBound = true;
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (!getSettings().shortcuts) return;
+        let delta = 0;
+        if (e.key === "+" || e.key === "=") delta = 0.25;
+        else if (e.key === "-" || e.key === "_") delta = -0.25;
+        else return;
+        const tag = e.target && e.target.tagName || "";
+        if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+        const v = activeVideo();
+        if (!v) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const r = Math.max(0.25, Math.min(4, (v.playbackRate || 1) + delta));
+        try {
+          v.playbackRate = r;
+        } catch {
+        }
+        toast(`速度 ${r}x`, { duration: 1200 });
+      },
+      true
+    );
+  }
   var webFullHotkeyBound = false;
   function webFullBox(video) {
     return video.closest(".video-js") || video.parentElement;
@@ -813,6 +842,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     addWebFullButton(video);
     setupWebFullHotkey();
     setupSeekHotkey();
+    setupRateHotkey();
     if (settings.resume && ep != null) {
       const rec = getEpisode(animeKey, ep);
       if (rec && !rec.done && rec.currentTime > 5) {
@@ -955,6 +985,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     scan();
     setupWebFullHotkey();
     setupSeekHotkey();
+    setupRateHotkey();
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener("pagehide", () => document.querySelectorAll("video").forEach((v) => {
       const ep = epForVideo(v);
@@ -986,16 +1017,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           if (url) location.href = url;
           break;
         }
-        case "+":
-        case "=":
-          video.playbackRate = Math.min(4, video.playbackRate + 0.25);
-          toast(`速度 ${video.playbackRate}x`, { duration: 1200 });
-          break;
-        case "-":
-        case "_":
-          video.playbackRate = Math.max(0.25, video.playbackRate - 0.25);
-          toast(`速度 ${video.playbackRate}x`, { duration: 1200 });
-          break;
+        // +/- 調速由全域 setupRateHotkey 處理
         default:
           break;
       }
