@@ -1,5 +1,5 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
-import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings } from './store.js';
+import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, clearAnimeWatch } from './store.js';
 import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
@@ -56,6 +56,11 @@ export function injectStyles() {
 .a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
 .a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
   font-weight:700;line-height:1;padding:2px 6px;border-radius:99px;vertical-align:middle}
+.a1p-row-del{margin-left:auto;flex:none;border:1px solid #e0466e;background:transparent;color:#e0466e;
+  cursor:pointer;border-radius:6px;width:28px;height:28px;font-size:15px;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+.a1p-row-del:hover{background:#e0466e;color:#fff}
+.a1p-panel-hint{margin:-4px 0 8px;font-size:11px;color:#e0466e}
 .a1p-hide{display:none!important}
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
@@ -468,20 +473,40 @@ export function mountTrackingPanel() {
   panel.className = 'a1p-panel a1p-hide';
   document.body.appendChild(panel);
 
-  fab.onclick = () => {
+  fab.onclick = (e) => {
+    const willOpen = panel.classList.contains('a1p-hide');
     panel.classList.toggle('a1p-hide');
-    if (!panel.classList.contains('a1p-hide')) renderPanel(panel);
+    if (willOpen) {
+      // 按住 Shift 開啟 → 進入刪除模式，每列右側出現刪除鈕
+      panel.classList.toggle('a1p-del-mode', e.shiftKey);
+      renderPanel(panel);
+    }
   };
+
+  // 刪除鈕（委派在 panel 上，撐過 innerHTML 重繪）：確認後清除該動畫進度並重繪
+  panel.addEventListener('click', (e) => {
+    const del = e.target.closest('.a1p-row-del');
+    if (!del) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const catId = del.dataset.cat;
+    const name = del.dataset.name || '這部動畫';
+    if (!confirm(`確定刪除「${name}」的觀看進度？（保留封面快取）此動作無法復原。`)) return;
+    clearAnimeWatch(catId);
+    renderPanel(panel);
+  });
 }
 
 async function renderPanel(panel) {
+  const delMode = panel.classList.contains('a1p-del-mode');
+  const head = `<h4>追番清單</h4>${delMode ? '<div class="a1p-panel-hint">刪除模式：點右側 🗑 刪除該動畫進度</div>' : ''}`;
   const list = getInProgressList(); // 含「當前記錄全看完」的，改顯示「看下一集」而非消失
   if (!list.length) {
-    panel.innerHTML = '<h4>追番清單</h4><div class="a1p-sub">還沒有觀看記錄</div>';
+    panel.innerHTML = `${head}<div class="a1p-sub">還沒有觀看記錄</div>`;
     return;
   }
   // 先用現有資料即時渲染（依最後觀看排序），避免等待網路造成空白
-  panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+  panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
   // 再抓即時最新集數：標出「已追平後又出新集」者並置頂，並帶上「連載中」狀態（供「已看完/已到最新進度」區分）
   const latestMap = await fetchLatestEpMap();
   for (const x of list) {
@@ -490,10 +515,10 @@ async function renderPanel(panel) {
     x.airing = !!(info && info.airing);
   }
   list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0)); // 穩定排序：有更新置頂，組內維持原序
-  panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+  panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
 }
 
-function panelRowsHtml(list) {
+function panelRowsHtml(list, delMode) {
   return list
     .map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : '';
@@ -543,9 +568,13 @@ function panelRowsHtml(list) {
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';
+      const del = delMode
+        ? `<button class="a1p-row-del" type="button" title="刪除此動畫進度" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">🗑</button>`
+        : '';
       return `<div class="a1p-row${x.newEps ? ' a1p-row-new' : ''}">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
         <div><div class="a1p-rname">${escapeHtml(name)}${badge}</div>${link}</div>
+        ${del}
       </div>`;
     })
     .join('');
