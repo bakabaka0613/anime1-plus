@@ -277,6 +277,28 @@ export function initCategoryPlayback(animeKey) {
   };
 
   const playNextVideo = (video) => {
+    // 折疊模式：切換選集列到下一集（active 按鈕的下一顆）並播放
+    const bar = document.querySelector('.a1p-ep-selector');
+    if (bar) {
+      const btns = Array.from(bar.querySelectorAll('.a1p-ep-btn'));
+      const idx = btns.findIndex((b) => b.classList.contains('a1p-ep-active'));
+      const next = btns[idx + 1];
+      if (!next) return; // 已是最後一集
+      next.click();
+      setTimeout(() => {
+        const v = document.querySelector('article:not(.a1p-ep-hidden) video');
+        if (v) {
+          v.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          try {
+            v.play();
+          } catch {
+            /* 自動播放可能被阻擋 */
+          }
+        }
+      }, 150);
+      return;
+    }
+    // 非折疊：DOM 順序下一個 video
     const vids = Array.from(document.querySelectorAll('video'));
     const next = vids[vids.indexOf(video) + 1];
     if (!next) return;

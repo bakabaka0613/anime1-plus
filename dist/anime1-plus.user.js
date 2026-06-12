@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.1
+// @version      0.4.2
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1007,6 +1007,25 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (h1) renderLastWatched(animeKey, h1);
     };
     const playNextVideo = (video) => {
+      const bar = document.querySelector(".a1p-ep-selector");
+      if (bar) {
+        const btns = Array.from(bar.querySelectorAll(".a1p-ep-btn"));
+        const idx = btns.findIndex((b) => b.classList.contains("a1p-ep-active"));
+        const next2 = btns[idx + 1];
+        if (!next2) return;
+        next2.click();
+        setTimeout(() => {
+          const v = document.querySelector("article:not(.a1p-ep-hidden) video");
+          if (v) {
+            v.scrollIntoView({ behavior: "smooth", block: "center" });
+            try {
+              v.play();
+            } catch {
+            }
+          }
+        }, 150);
+        return;
+      }
       const vids = Array.from(document.querySelectorAll("video"));
       const next = vids[vids.indexOf(video) + 1];
       if (!next) return;
