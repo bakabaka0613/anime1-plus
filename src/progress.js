@@ -14,6 +14,35 @@ function computeDone(cur, dur, threshold) {
   return dur > 60 && cur >= MIN_DONE_SEC && cur / dur >= (threshold || DONE_RATIO);
 }
 
+// 目前該操作的播放器：優先正在播放，其次有進度，最後第一個
+function activeVideo() {
+  const vids = Array.from(document.querySelectorAll('video'));
+  return vids.find((v) => !v.paused) || vids.find((v) => v.currentTime > 0) || vids[0] || null;
+}
+
+// ---- 方向鍵快進/後退（秒數可調，分類頁與單集頁共用）----
+let seekHotkeyBound = false;
+function setupSeekHotkey() {
+  if (seekHotkeyBound) return;
+  seekHotkeyBound = true;
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!getSettings().shortcuts) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+    const v = activeVideo();
+    if (!v) return;
+    const sec = Number(getSettings().seekSeconds) || 10;
+    const d = e.key === 'ArrowLeft' ? -sec : sec;
+    try {
+      v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
+      e.preventDefault();
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 // ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
 let webFullHotkeyBound = false;
 
@@ -109,6 +138,7 @@ export async function initEpisodePage(ctx) {
 
   addWebFullButton(video);
   setupWebFullHotkey();
+  setupSeekHotkey();
 
   // ---- 續播 ----
   if (settings.resume && ep != null) {
@@ -282,6 +312,7 @@ export function initCategoryPlayback(animeKey) {
   const scan = () => document.querySelectorAll('video').forEach(bind);
   scan();
   setupWebFullHotkey();
+  setupSeekHotkey();
   // 播放器多為點擊後 JS 動態插入 <video> → 持續監聽
   new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('pagehide', () => document.querySelectorAll('video').forEach((v) => {
@@ -298,20 +329,8 @@ function bindShortcuts(video, ctx) {
   window.addEventListener('keydown', (e) => {
     const tag = (e.target && e.target.tagName) || '';
     if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
-    const seek = (d) => {
-      try {
-        video.currentTime = Math.max(0, Math.min((video.duration || 0), video.currentTime + d));
-      } catch {
-        /* ignore */
-      }
-    };
     switch (e.key) {
-      case 'ArrowLeft':
-        seek(-10);
-        break;
-      case 'ArrowRight':
-        seek(10);
-        break;
+      // ←/→ 由全域 setupSeekHotkey 處理（秒數可調）
       case ' ':
         e.preventDefault();
         video.paused ? video.play() : video.pause();

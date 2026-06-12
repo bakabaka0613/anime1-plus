@@ -101,6 +101,18 @@ function registerMenu() {
     downloadJson(exportAll(), `anime1-plus-${new Date().toISOString().slice(0, 10)}.json`),
   );
   GM_registerMenuCommand('匯入資料 (JSON)', importViaFile);
+  GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 10}s）`, () => {
+    const cur = getSettings().seekSeconds || 10;
+    const v = prompt('方向鍵快進/後退秒數（1–120）：', String(cur));
+    if (v == null) return;
+    const n = parseInt(v, 10);
+    if (n >= 1 && n <= 120) {
+      setSettings({ seekSeconds: n });
+      toast(`快進秒數已設為 ${n} 秒`, { duration: 2500 });
+    } else {
+      toast('請輸入 1–120 的數字', { duration: 2500 });
+    }
+  });
   const toggles = [
     ['autoNext', '看完自動下一集'],
     ['resume', '自動續播'],

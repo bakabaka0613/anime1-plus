@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.3.4
+// @version      0.3.5
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -199,6 +199,8 @@
     // 續播
     shortcuts: true,
     // 鍵盤快捷鍵
+    seekSeconds: 10,
+    // 方向鍵快進/後退秒數
     rememberRate: true,
     // 記憶播放速度
     listThumbs: true,
@@ -697,6 +699,30 @@ body.a1p-webfull-lock{overflow:hidden!important}
   function computeDone(cur, dur, threshold) {
     return dur > 60 && cur >= MIN_DONE_SEC && cur / dur >= (threshold || DONE_RATIO);
   }
+  function activeVideo() {
+    const vids = Array.from(document.querySelectorAll("video"));
+    return vids.find((v) => !v.paused) || vids.find((v) => v.currentTime > 0) || vids[0] || null;
+  }
+  var seekHotkeyBound = false;
+  function setupSeekHotkey() {
+    if (seekHotkeyBound) return;
+    seekHotkeyBound = true;
+    window.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (!getSettings().shortcuts) return;
+      const tag = e.target && e.target.tagName || "";
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+      const v = activeVideo();
+      if (!v) return;
+      const sec = Number(getSettings().seekSeconds) || 10;
+      const d = e.key === "ArrowLeft" ? -sec : sec;
+      try {
+        v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
+        e.preventDefault();
+      } catch {
+      }
+    });
+  }
   var webFullHotkeyBound = false;
   function webFullBox(video) {
     return video.closest(".video-js") || video.parentElement;
@@ -777,6 +803,7 @@ body.a1p-webfull-lock{overflow:hidden!important}
     const { animeKey, ep } = ctx;
     addWebFullButton(video);
     setupWebFullHotkey();
+    setupSeekHotkey();
     if (settings.resume && ep != null) {
       const rec = getEpisode(animeKey, ep);
       if (rec && !rec.done && rec.currentTime > 5) {
@@ -918,6 +945,7 @@ body.a1p-webfull-lock{overflow:hidden!important}
     const scan = () => document.querySelectorAll("video").forEach(bind);
     scan();
     setupWebFullHotkey();
+    setupSeekHotkey();
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener("pagehide", () => document.querySelectorAll("video").forEach((v) => {
       const ep = epForVideo(v);
@@ -932,19 +960,8 @@ body.a1p-webfull-lock{overflow:hidden!important}
     window.addEventListener("keydown", (e) => {
       const tag = e.target && e.target.tagName || "";
       if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
-      const seek = (d) => {
-        try {
-          video.currentTime = Math.max(0, Math.min(video.duration || 0, video.currentTime + d));
-        } catch {
-        }
-      };
       switch (e.key) {
-        case "ArrowLeft":
-          seek(-10);
-          break;
-        case "ArrowRight":
-          seek(10);
-          break;
+        // ←/→ 由全域 setupSeekHotkey 處理（秒數可調）
         case " ":
           e.preventDefault();
           video.paused ? video.play() : video.pause();
@@ -1468,6 +1485,18 @@ body.a1p-webfull-lock{overflow:hidden!important}
       () => downloadJson(exportAll(), `anime1-plus-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`)
     );
     GM_registerMenuCommand("匯入資料 (JSON)", importViaFile);
+    GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 10}s）`, () => {
+      const cur = getSettings().seekSeconds || 10;
+      const v = prompt("方向鍵快進/後退秒數（1–120）：", String(cur));
+      if (v == null) return;
+      const n = parseInt(v, 10);
+      if (n >= 1 && n <= 120) {
+        setSettings({ seekSeconds: n });
+        toast(`快進秒數已設為 ${n} 秒`, { duration: 2500 });
+      } else {
+        toast("請輸入 1–120 的數字", { duration: 2500 });
+      }
+    });
     const toggles = [
       ["autoNext", "看完自動下一集"],
       ["resume", "自動續播"],
