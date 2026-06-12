@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.12
+// @version      0.6.13
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
+// @license      MIT
 // @match        https://anime1.me/*
 // @icon         https://anime1.me/favicon.ico
 // @homepageURL  https://github.com/bakabaka0613/anime1-plus

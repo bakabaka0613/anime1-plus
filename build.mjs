@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 import { mkdirSync } from 'node:fs';
 
-const VERSION = '0.6.12';
+const VERSION = '0.6.13';
 const REPO = 'bakabaka0613/anime1-plus';
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/dist/anime1-plus.user.js`;
 
@@ -13,6 +13,7 @@ const banner = `// ==UserScript==
 // @version      ${VERSION}
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
+// @license      MIT
 // @match        https://anime1.me/*
 // @icon         https://anime1.me/favicon.ico
 // @homepageURL  https://github.com/${REPO}
