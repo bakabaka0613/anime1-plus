@@ -47,6 +47,12 @@ export function injectStyles() {
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
 .a1p-thumb-unknown{border:1px dashed #6a6a72}
+/* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
+.a1p-update-badge{display:none}
+body.a1p-grid-on .a1p-card-row{position:relative}
+body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right:6px;z-index:3;
+  background:#e0466e;color:#fff;font-size:12px;font-weight:700;line-height:1;padding:3px 7px;
+  border-radius:99px;box-shadow:0 1px 5px #0008;pointer-events:none}
 /* PLEX 風格海報卡片網格（僅在 body.a1p-grid-on 時生效，可切換回原始列表）*/
 .a1p-poster{display:none} /* 原始列表模式：封面隱藏 */
 /* 懸浮工具列：搜尋 + 卡片/列表切換 + 大小調整 */

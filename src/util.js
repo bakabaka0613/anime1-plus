@@ -68,6 +68,32 @@ export function similarity(a, b) {
   return 1 - dist / Math.max(na.length, nb.length);
 }
 
+// 解析首頁「集數」欄文字 → 目前最新「一般集數」。
+// 格式樣本：「連載中(11)」「1-8」「1」「0-11.5」「1-12+OVA」「劇場版」「-」。
+// 「連載中(N)」取括號內最大數字；其餘取「+」前主集數段的最大數字（避免把 +OVA/+SP 算進來）；
+// 純特殊集（劇場版/OVA/SP/-）無一般集數 → null。
+export function parseLatestEp(text) {
+  const t = String(text || '').trim();
+  const airing = t.match(/連載中\s*\(([^)]*)\)/);
+  const head = airing ? airing[1] : t.split('+')[0];
+  const nums = head.match(/\d+(?:\.\d+)?/g);
+  return nums ? Math.max(...nums.map(Number)) : null;
+}
+
+// 依「最新集數 vs 已標記完成的集」判斷首頁是否該顯示更新提醒。
+// 觸發條件：必須有已完成（done）的集，且最新集數大於最大已完成集 → 回傳新增集數差，否則 null。
+export function pendingNewEpisodes(latestEp, watch) {
+  if (latestEp == null) return null;
+  let maxDone = null;
+  for (const ep of Object.keys(watch || {})) {
+    if (!watch[ep] || !watch[ep].done) continue;
+    const n = Number(ep);
+    if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+  }
+  if (maxDone === null || latestEp <= maxDone) return null;
+  return latestEp - maxDone;
+}
+
 // 節流：每 wait 毫秒最多執行一次（首呼立即、尾呼補一次）。
 export function throttle(fn, wait) {
   let last = 0;

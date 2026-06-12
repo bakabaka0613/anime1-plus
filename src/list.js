@@ -1,8 +1,9 @@
 // 列表頁（/）：把 TablePress 表格重排成 PLEX 風格海報卡片網格（封面在上、標題/集數在下）。
 // 封面沿用 lazy + 限流 + 重試；DataTables 的搜尋/分頁在表格外，仍正常運作。
 import { animeKeyFromCategoryPath, yearFromText } from './dom.js';
-import { getCover, setCover, getSettings, setSettings } from './store.js';
+import { getCover, setCover, getAnimeWatch, getSettings, setSettings } from './store.js';
 import { lookupCover, toCoverData } from './cover.js';
+import { parseLatestEp, pendingNewEpisodes } from './util.js';
 import { injectStyles } from './ui.js';
 
 const REQUEST_GAP_MS = 500; // 兩次 Bangumi 搜尋間隔，避免限流
@@ -111,6 +112,18 @@ export function initListPage() {
     if (!name) return;
     seen.add(tr);
     tr.classList.add('a1p-card-row');
+
+    // 更新提醒：集數欄（第 2 格）的最新集數 > 已看完的最大集 → 右上角徽章「+N」
+    const epTd = nameTd.nextElementSibling;
+    const latestEp = epTd ? parseLatestEp(epTd.textContent) : null;
+    const newCount = pendingNewEpisodes(latestEp, getAnimeWatch(ref.key));
+    if (newCount) {
+      const badge = document.createElement('span');
+      badge.className = 'a1p-update-badge';
+      badge.textContent = `+${newCount}`;
+      badge.title = `已更新至第 ${latestEp} 話，有 ${newCount} 集未看`;
+      tr.appendChild(badge);
+    }
 
     const img = document.createElement('img');
     img.className = 'a1p-poster';

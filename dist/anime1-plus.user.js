@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.13
+// @version      0.5.14
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -371,6 +371,24 @@
     const dist = levenshtein(na, nb);
     return 1 - dist / Math.max(na.length, nb.length);
   }
+  function parseLatestEp(text) {
+    const t = String(text || "").trim();
+    const airing = t.match(/連載中\s*\(([^)]*)\)/);
+    const head = airing ? airing[1] : t.split("+")[0];
+    const nums = head.match(/\d+(?:\.\d+)?/g);
+    return nums ? Math.max(...nums.map(Number)) : null;
+  }
+  function pendingNewEpisodes(latestEp, watch) {
+    if (latestEp == null) return null;
+    let maxDone = null;
+    for (const ep of Object.keys(watch || {})) {
+      if (!watch[ep] || !watch[ep].done) continue;
+      const n = Number(ep);
+      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+    }
+    if (maxDone === null || latestEp <= maxDone) return null;
+    return latestEp - maxDone;
+  }
   function throttle(fn, wait) {
     let last = 0;
     let timer = null;
@@ -448,6 +466,12 @@
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
 .a1p-thumb-unknown{border:1px dashed #6a6a72}
+/* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
+.a1p-update-badge{display:none}
+body.a1p-grid-on .a1p-card-row{position:relative}
+body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right:6px;z-index:3;
+  background:#e0466e;color:#fff;font-size:12px;font-weight:700;line-height:1;padding:3px 7px;
+  border-radius:99px;box-shadow:0 1px 5px #0008;pointer-events:none}
 /* PLEX 風格海報卡片網格（僅在 body.a1p-grid-on 時生效，可切換回原始列表）*/
 .a1p-poster{display:none} /* 原始列表模式：封面隱藏 */
 /* 懸浮工具列：搜尋 + 卡片/列表切換 + 大小調整 */
@@ -1508,6 +1532,16 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (!name) return;
       seen.add(tr);
       tr.classList.add("a1p-card-row");
+      const epTd = nameTd.nextElementSibling;
+      const latestEp = epTd ? parseLatestEp(epTd.textContent) : null;
+      const newCount = pendingNewEpisodes(latestEp, getAnimeWatch(ref.key));
+      if (newCount) {
+        const badge = document.createElement("span");
+        badge.className = "a1p-update-badge";
+        badge.textContent = `+${newCount}`;
+        badge.title = `已更新至第 ${latestEp} 話，有 ${newCount} 集未看`;
+        tr.appendChild(badge);
+      }
       const img = document.createElement("img");
       img.className = "a1p-poster";
       img.referrerPolicy = "no-referrer";
