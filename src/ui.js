@@ -122,6 +122,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   border-radius:6px;font-size:13px}
 .a1p-ep-page:hover{background:#303138}
 .a1p-ep-hidden{display:none!important}
+.pagination,.wp-pagenavi{display:none!important} /* 原生上一頁/下一頁，已併入選集列 */
 `;
   const el = document.createElement('style');
   el.textContent = css;
