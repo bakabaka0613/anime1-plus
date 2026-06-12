@@ -34,10 +34,10 @@ function extractEpisode(title) {
 function extractType(rest, epRaw) {
   const hay = `${rest} ${epRaw || ''}`;
   let type = 'TV';
-  if (/劇場版|\bmovie\b/i.test(hay)) type = 'MOVIE';
+  if (/劇場版|電影版|\bmovie\b/i.test(hay)) type = 'MOVIE';
   else if (/OVA|OAD/i.test(hay)) type = 'OVA';
   else if (/特別篇|總集篇|\bSP\b|\bspecial\b/i.test(hay)) type = 'SP';
-  const cleaned = rest.replace(/劇場版|\bmovie\b|OVA|OAD|特別篇|總集篇|\bSP\b|\bspecial\b/gi, '');
+  const cleaned = rest.replace(/劇場版|電影版|\bmovie\b|OVA|OAD|特別篇|總集篇|\bSP\b|\bspecial\b/gi, '');
   return { type, rest: cleaned };
 }
 

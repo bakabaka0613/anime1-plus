@@ -59,6 +59,19 @@ test('劇場版 type = MOVIE', () => {
   assert.ok(!r.baseName.includes('劇場版'));
 });
 
+test('「電影版」前綴視為 MOVIE 並從 baseName 移除（避免主導搜尋）', () => {
+  const r = parseTitle('電影版小林家的龍女僕：害怕寂寞的龍 [劇場版]');
+  assert.equal(r.type, 'MOVIE');
+  assert.equal(r.baseName, '小林家的龍女僕：害怕寂寞的龍');
+  assert.ok(!r.baseName.includes('電影版'));
+});
+
+test('「電影版 」帶空格前綴也移除', () => {
+  const r = parseTitle('電影版 搖曳露營△ [劇場版]');
+  assert.equal(r.type, 'MOVIE');
+  assert.equal(r.baseName, '搖曳露營△');
+});
+
 test('OVA type = OVA', () => {
   const r = parseTitle('某科學的超電磁砲 OVA [01]');
   assert.equal(r.type, 'OVA');
