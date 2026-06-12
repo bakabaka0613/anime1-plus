@@ -116,6 +116,24 @@ export function caughtUpNewEpisodes(latestEp, watch, maxEpSeen) {
   return latestEp - maxDone;
 }
 
+// 追番清單「繼續看／看下一集」判定：以「最後觀看的集」（watchedAt 最大，不論是否標記看完）為準。
+// 不可只在未看完(!done)的集裡挑——否則前集「看了但沒到門檻沒標記」、後集已看完時，會回頭挑到前集。
+// 回傳 { mode:'resume', ep:<原集 key> } / { mode:'next', ep:<下一集數> } / { mode:'none' }。
+export function resumeTarget(episodes) {
+  let lastEp = null;
+  let lastAt = -1;
+  for (const e of Object.keys(episodes || {})) {
+    const at = (episodes[e] && episodes[e].watchedAt) || 0;
+    if (at > lastAt) {
+      lastAt = at;
+      lastEp = e;
+    }
+  }
+  if (lastEp == null) return { mode: 'none' };
+  if (!episodes[lastEp].done) return { mode: 'resume', ep: lastEp };
+  return { mode: 'next', ep: Number(lastEp) + 1 };
+}
+
 // 節流：每 wait 毫秒最多執行一次（首呼立即、尾呼補一次）。
 export function throttle(fn, wait) {
   let last = 0;

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes } from '../src/util.js';
+import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget } from '../src/util.js';
 
 // ---- parseLatestEp：解析首頁「集數」欄 → 最新一般集數 ----
 test('連載中(N) 取括號內集數', () => {
@@ -96,4 +96,32 @@ test('一次更新多集（追平第8、現已第11）→ +3', () => {
 
 test('最新集數無法解析（null）→ null', () => {
   assert.equal(caughtUpNewEpisodes(null, done([8]), 8), null);
+});
+
+// ---- resumeTarget：追番清單「繼續看／看下一集」判定 ----
+const ep = (done, watchedAt, currentTime = 0) => ({ done, watchedAt, currentTime });
+
+test('reproducer：前集未標記看完、後集已標記看完 → 看下一集（不回頭挑前集）', () => {
+  // 第1集看了但沒到門檻（!done，較早）；第2集看完（done，較晚）
+  const eps = { 1: ep(false, 100), 2: ep(true, 200) };
+  assert.deepEqual(resumeTarget(eps), { mode: 'next', ep: 3 });
+});
+
+test('最後觀看的集未看完 → 繼續看該集', () => {
+  const eps = { 1: ep(true, 100), 3: ep(false, 300, 250) };
+  assert.deepEqual(resumeTarget(eps), { mode: 'resume', ep: '3' });
+});
+
+test('全部看完 → 下一集為最後觀看集 + 1', () => {
+  const eps = { 1: ep(true, 100), 2: ep(true, 200) };
+  assert.deepEqual(resumeTarget(eps), { mode: 'next', ep: 3 });
+});
+
+test('回頭重看舊集且未看完 → 以最後動作為準，繼續看該舊集', () => {
+  const eps = { 5: ep(true, 500), 2: ep(false, 600, 100) };
+  assert.deepEqual(resumeTarget(eps), { mode: 'resume', ep: '2' });
+});
+
+test('無觀看記錄 → none', () => {
+  assert.deepEqual(resumeTarget({}), { mode: 'none' });
 });

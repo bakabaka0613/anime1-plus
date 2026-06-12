@@ -1,6 +1,6 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
 import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings } from './store.js';
-import { formatTime, toTraditional, caughtUpNewEpisodes } from './util.js';
+import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
 
@@ -484,23 +484,15 @@ function panelRowsHtml(list) {
             : null;
         return item ? item.url : catUrl; // 不在當前分頁清單時退回全集連結
       };
-      // 優先未看完的最近集；全部看完則指向下一集（最大已看集 + 1）
-      let resumeEp = null;
-      let resumeAt = -1;
-      for (const e of Object.keys(eps)) {
-        if (!eps[e].done && (eps[e].watchedAt || 0) > resumeAt) {
-          resumeAt = eps[e].watchedAt || 0;
-          resumeEp = e;
-        }
-      }
+      // 以最後觀看的集為準（不論是否標記看完）：未看完→繼續看該集；已看完→指向下一集
+      const target = resumeTarget(eps);
       let link;
-      if (resumeEp != null) {
-        const t = formatTime((eps[resumeEp] || {}).currentTime || 0);
-        link = `<a href="${epUrl(resumeEp)}">繼續看 第${resumeEp}集 (${t})</a>`;
+      if (target.mode === 'resume') {
+        const t = formatTime((eps[target.ep] || {}).currentTime || 0);
+        link = `<a href="${epUrl(target.ep)}">繼續看 第${target.ep}集 (${t})</a>`;
       } else {
-        // 全部已看完：只有「下一集確實在集數清單裡」才顯示看下一集，否則視為已看完
-        const maxEp = Math.max(...Object.keys(eps).map(Number).filter((n) => !Number.isNaN(n)));
-        const nextEp = maxEp + 1;
+        // 已看完：只有「下一集確實在集數清單裡」才顯示看下一集，否則視為已看完
+        const nextEp = target.ep;
         const nextItem =
           x.meta && Array.isArray(x.meta.episodes)
             ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp))

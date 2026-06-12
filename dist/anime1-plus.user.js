@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.21
+// @version      0.5.22
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -404,6 +404,20 @@
     }
     if (maxDone === null || maxDone < maxEpSeen || latestEp <= maxDone) return null;
     return latestEp - maxDone;
+  }
+  function resumeTarget(episodes) {
+    let lastEp = null;
+    let lastAt = -1;
+    for (const e of Object.keys(episodes || {})) {
+      const at = episodes[e] && episodes[e].watchedAt || 0;
+      if (at > lastAt) {
+        lastAt = at;
+        lastEp = e;
+      }
+    }
+    if (lastEp == null) return { mode: "none" };
+    if (!episodes[lastEp].done) return { mode: "resume", ep: lastEp };
+    return { mode: "next", ep: Number(lastEp) + 1 };
   }
   function throttle(fn, wait) {
     let last = 0;
@@ -895,21 +909,13 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         const item = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(ep)) : null;
         return item ? item.url : catUrl;
       };
-      let resumeEp = null;
-      let resumeAt = -1;
-      for (const e of Object.keys(eps)) {
-        if (!eps[e].done && (eps[e].watchedAt || 0) > resumeAt) {
-          resumeAt = eps[e].watchedAt || 0;
-          resumeEp = e;
-        }
-      }
+      const target = resumeTarget(eps);
       let link;
-      if (resumeEp != null) {
-        const t = formatTime((eps[resumeEp] || {}).currentTime || 0);
-        link = `<a href="${epUrl(resumeEp)}">繼續看 第${resumeEp}集 (${t})</a>`;
+      if (target.mode === "resume") {
+        const t = formatTime((eps[target.ep] || {}).currentTime || 0);
+        link = `<a href="${epUrl(target.ep)}">繼續看 第${target.ep}集 (${t})</a>`;
       } else {
-        const maxEp = Math.max(...Object.keys(eps).map(Number).filter((n) => !Number.isNaN(n)));
-        const nextEp = maxEp + 1;
+        const nextEp = target.ep;
         const nextItem = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp)) : null;
         link = nextItem ? `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>` : '<span class="a1p-sub">已看完</span>';
       }
