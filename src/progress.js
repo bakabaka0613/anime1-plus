@@ -222,6 +222,7 @@ export async function initEpisodePage(ctx) {
       currentTime: cur,
       duration: dur,
       done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
+      url: location.href, // 單集頁網址（跨分頁「繼續看」用）
     });
   };
   const persistThrottled = throttle(() => persist(), 5000);
@@ -318,6 +319,10 @@ export function initCategoryPlayback(animeKey) {
     if (ep == null) return; // 還無法定位集數（標題未就緒）→ 不標記，待下次掃描重試
     bound.add(video);
     addWebFullButton(video);
+    // 該集單集頁網址（跨分頁「繼續看」用）：article 標題連結 → /{postId}
+    const a = video.closest('article');
+    const epUrl =
+      ((a && a.querySelector('.entry-title a, a[rel="bookmark"]')) || {}).href || location.href;
 
     if (settings.resume) {
       const rec = getEpisode(animeKey, ep);
@@ -344,6 +349,7 @@ export function initCategoryPlayback(animeKey) {
         currentTime: cur,
         duration: dur,
         done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
+        url: epUrl,
       });
     };
     const persistThrottled = throttle(() => persist(), 5000);

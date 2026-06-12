@@ -367,12 +367,16 @@ export function renderLastWatched(animeKey, mountEl) {
   const meta = getMeta(animeKey);
   const item = meta && Array.isArray(meta.episodes) ? meta.episodes.find((it) => String(it.ep) === String(lastEp)) : null;
   const status = rec.done ? '已看完' : `看到 ${formatTime(rec.currentTime || 0)}`;
+  const num = String(animeKey).replace(/^cat:/, '');
+  const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : null;
+  // 優先用看當下存的單集頁網址（不論進度集在哪一分頁都能跳）
+  const url = rec.url || (item && item.url) || catUrl;
 
   const old = document.querySelector('.a1p-last');
   if (old) old.remove();
   const bar = document.createElement('div');
   bar.className = 'a1p-last';
-  const link = item ? `<a class="a1p-btn" href="${item.url}">▶ 繼續看</a>` : '';
+  const link = url ? `<a class="a1p-btn" href="${url}">▶ 繼續看</a>` : '';
   bar.innerHTML = `<span>上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（${status}）</span>${link}`;
   mountEl.parentNode.insertBefore(bar, mountEl);
 }
@@ -439,6 +443,8 @@ function renderPanel(panel) {
       const num = String(x.catId).replace(/^cat:/, '');
       const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : '#';
       const epUrl = (ep) => {
+        const r = eps[ep];
+        if (r && r.url) return r.url; // 看過的集存了單集頁網址（跨分頁可用）
         const item =
           x.meta && Array.isArray(x.meta.episodes)
             ? x.meta.episodes.find((it) => String(it.ep) === String(ep))

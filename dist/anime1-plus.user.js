@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.8
+// @version      0.4.9
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1092,11 +1092,14 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const meta = getMeta(animeKey);
     const item = meta && Array.isArray(meta.episodes) ? meta.episodes.find((it) => String(it.ep) === String(lastEp)) : null;
     const status = rec.done ? "已看完" : `看到 ${formatTime(rec.currentTime || 0)}`;
+    const num = String(animeKey).replace(/^cat:/, "");
+    const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : null;
+    const url = rec.url || item && item.url || catUrl;
     const old = document.querySelector(".a1p-last");
     if (old) old.remove();
     const bar = document.createElement("div");
     bar.className = "a1p-last";
-    const link = item ? `<a class="a1p-btn" href="${item.url}">▶ 繼續看</a>` : "";
+    const link = url ? `<a class="a1p-btn" href="${url}">▶ 繼續看</a>` : "";
     bar.innerHTML = `<span>上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（${status}）</span>${link}`;
     mountEl.parentNode.insertBefore(bar, mountEl);
   }
@@ -1149,6 +1152,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const num = String(x.catId).replace(/^cat:/, "");
       const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : "#";
       const epUrl = (ep) => {
+        const r = eps[ep];
+        if (r && r.url) return r.url;
         const item = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(ep)) : null;
         return item ? item.url : catUrl;
       };
@@ -1360,7 +1365,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       setEpisodeProgress(animeKey, ep, {
         currentTime: cur,
         duration: dur,
-        done: done ?? computeDone(cur, dur, settings.autoNextThreshold)
+        done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
+        url: location.href
+        // 單集頁網址（跨分頁「繼續看」用）
       });
     };
     const persistThrottled = throttle(() => persist(), 5e3);
@@ -1437,6 +1444,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (ep == null) return;
       bound.add(video);
       addWebFullButton(video);
+      const a = video.closest("article");
+      const epUrl = (a && a.querySelector('.entry-title a, a[rel="bookmark"]') || {}).href || location.href;
       if (settings.resume) {
         const rec = getEpisode(animeKey, ep);
         if (rec && !rec.done && rec.currentTime > 5) {
@@ -1458,7 +1467,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         setEpisodeProgress(animeKey, ep, {
           currentTime: cur,
           duration: dur,
-          done: done ?? computeDone(cur, dur, settings.autoNextThreshold)
+          done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
+          url: epUrl
         });
       };
       const persistThrottled = throttle(() => persist(), 5e3);
