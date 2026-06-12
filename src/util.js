@@ -59,9 +59,10 @@ export function similarity(a, b) {
   if (!na || !nb) return 0;
   if (na === nb) return 1;
   if (na.includes(nb) || nb.includes(na)) {
-    // 依長度比例給分：短名被長名包含時給較低分，避免不相關短名虛高誤採
+    // 依長度比例給分：短名被長名包含時給很低分，避免常見短詞（如「魔法」）虛高誤採。
+    // 候選名長度需達 parsed 約 40% 才可能過 confident 的 name>=0.5 門檻。
     const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-    return 0.5 + 0.5 * ratio;
+    return 0.3 + 0.5 * ratio;
   }
   const dist = levenshtein(na, nb);
   return 1 - dist / Math.max(na.length, nb.length);

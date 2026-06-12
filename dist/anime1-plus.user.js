@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.12
+// @version      0.5.13
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -366,7 +366,7 @@
     if (na === nb) return 1;
     if (na.includes(nb) || nb.includes(na)) {
       const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-      return 0.5 + 0.5 * ratio;
+      return 0.3 + 0.5 * ratio;
     }
     const dist = levenshtein(na, nb);
     return 1 - dist / Math.max(na.length, nb.length);
