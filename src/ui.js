@@ -1,6 +1,7 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
 import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings } from './store.js';
-import { formatTime, toTraditional } from './util.js';
+import { formatTime, toTraditional, caughtUpNewEpisodes } from './util.js';
+import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
 
 const BGM = (id) => `https://bgm.tv/subject/${id}`;
@@ -43,6 +44,9 @@ export function injectStyles() {
 .a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
 .a1p-row .a1p-rname{font-weight:600}
+.a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
+.a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
+  font-weight:700;line-height:1;padding:2px 6px;border-radius:99px;vertical-align:middle}
 .a1p-hide{display:none!important}
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
@@ -436,13 +440,28 @@ export function mountTrackingPanel() {
   };
 }
 
-function renderPanel(panel) {
+async function renderPanel(panel) {
   const list = getInProgressList(); // 含「當前記錄全看完」的，改顯示「看下一集」而非消失
   if (!list.length) {
     panel.innerHTML = '<h4>追番清單</h4><div class="a1p-sub">還沒有觀看記錄</div>';
     return;
   }
-  const rows = list
+  // 先用現有資料即時渲染（依最後觀看排序），避免等待網路造成空白
+  panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+  // 再抓即時最新集數，標出「已追平後又出新集」者並置頂（其餘維持原順序）
+  const latestMap = await fetchLatestEpMap();
+  let any = false;
+  for (const x of list) {
+    x.newEps = caughtUpNewEpisodes(latestMap[x.catId], x.episodes, x.meta && x.meta.maxEpSeen);
+    if (x.newEps) any = true;
+  }
+  if (!any) return; // 無更新 → 維持先前渲染
+  list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0)); // 穩定排序：有更新置頂，組內維持原序
+  panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+}
+
+function panelRowsHtml(list) {
+  return list
     .map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : '';
       const cleanTitle = (s) => String(s || '').replace(/\s*[–\-|]\s*Anime1.*$/i, '').trim();
@@ -490,13 +509,13 @@ function renderPanel(panel) {
           ? `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`
           : '<span class="a1p-sub">已看完</span>';
       }
-      return `<div class="a1p-row">
+      const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';
+      return `<div class="a1p-row${x.newEps ? ' a1p-row-new' : ''}">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
-        <div><div class="a1p-rname">${escapeHtml(name)}</div>${link}</div>
+        <div><div class="a1p-rname">${escapeHtml(name)}${badge}</div>${link}</div>
       </div>`;
     })
     .join('');
-  panel.innerHTML = `<h4>追番清單</h4>${rows}`;
 }
 
 function escapeHtml(s) {

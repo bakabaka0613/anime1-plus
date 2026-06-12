@@ -101,6 +101,21 @@ export function pendingNewEpisodes(latestEp, watch) {
   return latestEp - maxDone;
 }
 
+// 追番面板用的嚴格更新判定：只有「使用者已追平當時最新集（沒有下一集可看）後又出新集」才回傳差額。
+// 與 pendingNewEpisodes 的差別：多一道「已追平」門檻——最大已完成集需 >= maxEpSeen
+// （上次進分類頁看到的最新集），藉此排除「還落後一堆舊集沒看」的情況（那不算更新提醒）。
+export function caughtUpNewEpisodes(latestEp, watch, maxEpSeen) {
+  if (latestEp == null || maxEpSeen == null) return null;
+  let maxDone = null;
+  for (const ep of Object.keys(watch || {})) {
+    if (!watch[ep] || !watch[ep].done) continue;
+    const n = Number(ep);
+    if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+  }
+  if (maxDone === null || maxDone < maxEpSeen || latestEp <= maxDone) return null;
+  return latestEp - maxDone;
+}
+
 // 節流：每 wait 毫秒最多執行一次（首呼立即、尾呼補一次）。
 export function throttle(fn, wait) {
   let last = 0;

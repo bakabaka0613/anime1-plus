@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.20
+// @version      0.5.21
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -394,6 +394,17 @@
     if (maxDone === null || latestEp <= maxDone) return null;
     return latestEp - maxDone;
   }
+  function caughtUpNewEpisodes(latestEp, watch, maxEpSeen) {
+    if (latestEp == null || maxEpSeen == null) return null;
+    let maxDone = null;
+    for (const ep of Object.keys(watch || {})) {
+      if (!watch[ep] || !watch[ep].done) continue;
+      const n = Number(ep);
+      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+    }
+    if (maxDone === null || maxDone < maxEpSeen || latestEp <= maxDone) return null;
+    return latestEp - maxDone;
+  }
   function throttle(fn, wait) {
     let last = 0;
     let timer = null;
@@ -425,6 +436,32 @@
     const h = Math.floor(sec / 3600);
     const pad = (n) => String(n).padStart(2, "0");
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+
+  // src/animelist.js
+  var URL2 = "https://anime1.me/animelist.json";
+  var TTL = 5 * 60 * 1e3;
+  var cache = null;
+  var cacheAt = 0;
+  async function fetchLatestEpMap() {
+    const now = Date.now();
+    if (cache && now - cacheAt < TTL) return cache;
+    try {
+      const res = await fetch(URL2, { credentials: "omit" });
+      if (!res.ok) return cache || {};
+      const rows = await res.json();
+      const map = {};
+      for (const r of rows) {
+        if (!Array.isArray(r) || r[0] == null) continue;
+        const ep = parseLatestEp(String(r[2]));
+        if (ep != null) map[`cat:${r[0]}`] = ep;
+      }
+      cache = map;
+      cacheAt = now;
+      return map;
+    } catch {
+      return cache || {};
+    }
   }
 
   // src/ui.js
@@ -467,6 +504,9 @@
 .a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
 .a1p-row .a1p-rname{font-weight:600}
+.a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
+.a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
+  font-weight:700;line-height:1;padding:2px 6px;border-radius:99px;vertical-align:middle}
 .a1p-hide{display:none!important}
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
@@ -824,13 +864,25 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (!panel.classList.contains("a1p-hide")) renderPanel(panel);
     };
   }
-  function renderPanel(panel) {
+  async function renderPanel(panel) {
     const list = getInProgressList();
     if (!list.length) {
       panel.innerHTML = '<h4>追番清單</h4><div class="a1p-sub">還沒有觀看記錄</div>';
       return;
     }
-    const rows = list.map((x) => {
+    panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+    const latestMap = await fetchLatestEpMap();
+    let any = false;
+    for (const x of list) {
+      x.newEps = caughtUpNewEpisodes(latestMap[x.catId], x.episodes, x.meta && x.meta.maxEpSeen);
+      if (x.newEps) any = true;
+    }
+    if (!any) return;
+    list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0));
+    panel.innerHTML = `<h4>追番清單</h4>${panelRowsHtml(list)}`;
+  }
+  function panelRowsHtml(list) {
+    return list.map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : "";
       const cleanTitle = (s) => String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
       const name = x.cover && (x.cover.local || x.cover.name_cn && toTraditional(x.cover.name_cn) || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
@@ -861,12 +913,12 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         const nextItem = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp)) : null;
         link = nextItem ? `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>` : '<span class="a1p-sub">已看完</span>';
       }
-      return `<div class="a1p-row">
+      const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : "";
+      return `<div class="a1p-row${x.newEps ? " a1p-row-new" : ""}">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
-        <div><div class="a1p-rname">${escapeHtml(name)}</div>${link}</div>
+        <div><div class="a1p-rname">${escapeHtml(name)}${badge}</div>${link}</div>
       </div>`;
     }).join("");
-    panel.innerHTML = `<h4>追番清單</h4>${rows}`;
   }
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
