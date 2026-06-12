@@ -1,0 +1,14 @@
+{
+  "name": "anime1-plus",
+  "version": "0.1.0",
+  "description": "Anime1.me 增強油猴腳本：自動封面圖、觀看記錄、續播、自動下一集",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  },
+  "license": "MIT"
+}
