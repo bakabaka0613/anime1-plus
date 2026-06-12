@@ -1,16 +1,14 @@
 // 純工具函式（不依賴 GM / DOM，可被 node:test 直接 import）。
+import * as OpenCC from 'opencc-js';
 
-// 繁→簡轉換：使用 OpenCC（由 userscript @require 載入全域 OpenCC）。
-// node:test 環境沒有 OpenCC，會原樣返回（測試不依賴此函式）。
+// 繁→簡轉換（opencc-js 直接打包進腳本，不靠 @require，避免 sandbox 取不到全域）。
 let _ccConv = null;
 let _ccTried = false;
 function ccConverter() {
   if (_ccTried) return _ccConv;
   _ccTried = true;
   try {
-    const g = typeof unsafeWindow !== 'undefined' ? unsafeWindow : typeof window !== 'undefined' ? window : {};
-    const OC = (typeof OpenCC !== 'undefined' && OpenCC) || g.OpenCC;
-    if (OC && OC.Converter) _ccConv = OC.Converter({ from: 'tw', to: 'cn' });
+    _ccConv = OpenCC.Converter({ from: 'tw', to: 'cn' });
   } catch {
     /* ignore */
   }
