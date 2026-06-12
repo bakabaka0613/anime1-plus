@@ -25,6 +25,17 @@ export function postIdFromPath(loc = location) {
   return m ? m[1] : null;
 }
 
+// 由任意網址（如 https://anime1.me/12345）取 postId
+export function postIdFromUrl(url) {
+  const m = String(url || '').match(/anime1\.me\/(\d+)/);
+  return m ? m[1] : null;
+}
+
+// 由 postId 組回單集頁網址（同步只存 postId，讀取時重建，省去重複的網域字串）
+export function postUrl(postId) {
+  return postId ? `https://anime1.me/${postId}` : null;
+}
+
 // 正規化 category 路徑為穩定的 animeKey（同一部動畫每集相同）
 export function animeKeyFromCategoryPath(path) {
   let p = path;

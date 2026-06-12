@@ -63,6 +63,15 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   tombstone on the next real write → "watch it again to restore". The 0-progress-flash guard in
   `progress.js` means setEpisodeProgress only fires on genuine playback, so re-watch-clears is safe.
   (`clearAnimeWatch` is now unused — left in `store.js` as a pre-existing local hard-delete helper.)
+- **Compact sync shape** (synced JSON is watch+meta only): episode URLs are NOT stored — `watch[ep]`
+  keeps `postId` (and `meta.episodes[]` is `{ep, postId}`); reconstruct the single-episode URL at read
+  time via `postUrl(postId)` in `dom.js` (`r.url || postUrl(r.postId)` — the `r.url` arm is legacy
+  back-compat). `meta.title` is stored already-stripped of the ` – Anime1.me …` suffix (`cleanTitle` in
+  `util.js`; read sites still apply it for legacy data). Old fat records (full `url`, dirty title) are
+  upgraded in place by `normalizeWatchMeta` (`util.js`, pure/idempotent): `migrateStored()` runs once at
+  startup (`main.js`) and `applySyncedData` re-normalizes after each merge → the next push slims the Gist
+  WITHOUT needing to re-watch every episode. `setEpisodeProgress` also drops a stale `url` once `postId`
+  is present. When `postId` can't be derived (e.g. an old `?cat=` URL) the `url` is kept as a fallback.
 - zh-Hant→zh-Hans (OpenCC, jsdelivr `@require`) before Bangumi search (its index is mostly Simplified);
   if name/name_cn don't match, fall back to comparing Bangumi aliases. Cover card main title uses the
   **original anime1 Traditional name** (Bangumi Chinese is often Simplified).

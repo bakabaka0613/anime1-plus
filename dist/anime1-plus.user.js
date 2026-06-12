@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.14
+// @version      0.6.16
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -46,6 +46,13 @@
   function postIdFromPath(loc = location) {
     const m = loc.pathname.match(/^\/(\d+)\/?$/);
     return m ? m[1] : null;
+  }
+  function postIdFromUrl(url) {
+    const m = String(url || "").match(/anime1\.me\/(\d+)/);
+    return m ? m[1] : null;
+  }
+  function postUrl(postId) {
+    return postId ? `https://anime1.me/${postId}` : null;
   }
   function animeKeyFromCategoryPath(path) {
     let p = path;
@@ -389,6 +396,40 @@
       }
     };
   }
+  function cleanTitle(s) {
+    return String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
+  }
+  function normalizeWatchMeta(data) {
+    const src = data || {};
+    const before = JSON.stringify({ watch: src.watch || {}, meta: src.meta || {} });
+    const POST_ID = /anime1\.me\/(\d+)/;
+    const slimEp = (rec) => {
+      const r = { ...rec };
+      if (r.url) {
+        if (!r.postId) {
+          const m = String(r.url).match(POST_ID);
+          if (m) r.postId = m[1];
+        }
+        if (r.postId) delete r.url;
+      }
+      return r;
+    };
+    const watch = {};
+    for (const cat of Object.keys(src.watch || {})) {
+      const eps = src.watch[cat] || {};
+      watch[cat] = {};
+      for (const ep of Object.keys(eps)) watch[cat][ep] = slimEp(eps[ep]);
+    }
+    const meta = {};
+    for (const cat of Object.keys(src.meta || {})) {
+      const m = { ...src.meta[cat] || {} };
+      if (typeof m.title === "string") m.title = cleanTitle(m.title);
+      if (Array.isArray(m.episodes)) m.episodes = m.episodes.map(slimEp);
+      meta[cat] = m;
+    }
+    const after = JSON.stringify({ watch, meta });
+    return { watch, meta, changed: after !== before };
+  }
   function formatTime(sec) {
     if (!Number.isFinite(sec) || sec < 0) sec = 0;
     const s = Math.floor(sec % 60);
@@ -431,9 +472,9 @@
         covers: obj.covers || {},
         // { [catId]: { subjectId, cover, name, name_cn, score, manual, ts } }
         watch: obj.watch || {},
-        // { [catId]: { [ep]: { currentTime, duration, done, watchedAt } } }
+        // { [catId]: { [ep]: { currentTime, duration, done, watchedAt, postId } } }（postId 重建單集頁網址）
         meta: obj.meta || {},
-        // { [catId]: { title, maxEpSeen } }
+        // { [catId]: { title(乾淨無站名後綴), maxEpSeen, episodes:[{ep,postId}] } }
         settings: { ...DEFAULT_SETTINGS, ...obj.settings || {} }
       };
     } catch {
@@ -475,7 +516,9 @@
     const root = loadRoot();
     root.watch[catId] = root.watch[catId] || {};
     const prev = root.watch[catId][ep] || {};
-    root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
+    const rec = { ...prev, ...data, watchedAt: Date.now() };
+    if (rec.postId && rec.url) delete rec.url;
+    root.watch[catId][ep] = rec;
     if (root.meta[catId] && root.meta[catId].deletedAt) delete root.meta[catId].deletedAt;
     saveRoot(root);
   }
@@ -603,12 +646,22 @@
     const root = loadRoot();
     const before = JSON.stringify({ watch: root.watch, meta: root.meta });
     const merged = mergeSync({ watch: root.watch, meta: root.meta }, incoming || {});
-    const after = JSON.stringify(merged);
+    const norm = normalizeWatchMeta(merged);
+    const after = JSON.stringify({ watch: norm.watch, meta: norm.meta });
     if (after === before) return { changed: false };
-    root.watch = merged.watch;
-    root.meta = merged.meta;
+    root.watch = norm.watch;
+    root.meta = norm.meta;
     saveRoot(root);
     return { changed: true };
+  }
+  function migrateStored() {
+    const root = loadRoot();
+    const norm = normalizeWatchMeta({ watch: root.watch, meta: root.meta });
+    if (!norm.changed) return false;
+    root.watch = norm.watch;
+    root.meta = norm.meta;
+    saveRoot(root);
+    return true;
   }
 
   // src/animelist.js
@@ -935,7 +988,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (!firstAnchor) firstAnchor = h;
       const parsed = parseTitle(h.textContent || "");
       if (parsed.ep != null) {
-        episodes.push({ ep: parsed.ep, postId, url: `https://anime1.me/${postId}` });
+        episodes.push({ ep: parsed.ep, postId });
         maxEp = Math.max(maxEp, parsed.ep);
       }
       const rec = parsed.ep != null ? getEpisode(animeKey, parsed.ep) : null;
@@ -948,7 +1001,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         h.parentNode.appendChild(bar);
       }
     });
-    if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: document.title });
+    if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: cleanTitle(document.title) });
     return firstAnchor;
   }
   function appendPagination(bar) {
@@ -1045,9 +1098,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : null;
     const findUrl = (ep) => {
       const r = watch[ep];
-      if (r && r.url) return r.url;
+      if (r && (r.url || r.postId)) return r.url || postUrl(r.postId);
       const it = meta && Array.isArray(meta.episodes) ? meta.episodes.find((m) => String(m.ep) === String(ep)) : null;
-      return it ? it.url : null;
+      return it ? it.url || postUrl(it.postId) : null;
     };
     const target = resumeTarget(watch);
     let text;
@@ -1209,16 +1262,15 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   function panelRowsHtml(list, delMode) {
     return list.map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : "";
-      const cleanTitle = (s) => String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
       const name = x.cover && (x.cover.local || x.cover.name_cn && toTraditional(x.cover.name_cn) || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
       const eps = x.episodes;
       const num = String(x.catId).replace(/^cat:/, "");
       const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : "#";
       const epUrl = (ep) => {
         const r = eps[ep];
-        if (r && r.url) return r.url;
+        if (r && (r.url || r.postId)) return r.url || postUrl(r.postId);
         const item = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(ep)) : null;
-        return item ? item.url : catUrl;
+        return item ? item.url || postUrl(item.postId) : catUrl;
       };
       const target = resumeTarget(eps);
       let link;
@@ -1229,7 +1281,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         const nextEp = target.ep;
         const nextItem = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp)) : null;
         if (nextItem) {
-          link = `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`;
+          link = `<a href="${nextItem.url || postUrl(nextItem.postId)}">看下一集 第${nextEp}集</a>`;
         } else if (x.newEps) {
           link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;
         } else {
@@ -1413,7 +1465,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const meta = getMeta(animeKey);
     if (!meta || !Array.isArray(meta.episodes) || ep == null) return null;
     const later = meta.episodes.filter((e) => typeof e.ep === "number" && e.ep > ep).sort((a, b) => a.ep - b.ep);
-    return later.length ? later[0].url : null;
+    return later.length ? later[0].url || postUrl(later[0].postId) : null;
   }
   async function initEpisodePage(ctx) {
     const video = await waitForVideo();
@@ -1457,8 +1509,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         currentTime: cur,
         duration: dur,
         done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
-        url: location.href
-        // 單集頁網址（跨分頁「繼續看」用）
+        postId: postIdFromPath()
+        // 跨分頁「繼續看」用；網址由 postId 重建
       });
     };
     const persistThrottled = throttle(() => persist(), 5e3);
@@ -1544,7 +1596,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       bound.add(video);
       addWebFullButton(video);
       const a = video.closest("article");
-      const epUrl = (a && a.querySelector('.entry-title a, a[rel="bookmark"]') || {}).href || location.href;
+      const epHref = (a && a.querySelector('.entry-title a, a[rel="bookmark"]') || {}).href || "";
+      const epPostId = postIdFromUrl(epHref);
       if (settings.resume) {
         const rec = getEpisode(animeKey, ep);
         if (rec && !rec.done && rec.currentTime > 5) {
@@ -1567,7 +1620,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           currentTime: cur,
           duration: dur,
           done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
-          url: epUrl
+          postId: epPostId
+          // 網址由 postId 重建（分類頁就地播放時取自集連結）
         });
       };
       const persistThrottled = throttle(() => persist(), 5e3);
@@ -1992,7 +2046,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const infoMap = await fetchLatestEpMap();
       for (const x of need) {
         const info = infoMap[x.catId];
-        const name = info && info.name || x.meta && x.meta.title;
+        const name = info && info.name || cleanTitle(x.meta && x.meta.title) || null;
         if (!name) continue;
         bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
       }
@@ -2522,6 +2576,7 @@ ${menu}`, "");
     toast(`已${label}，重新整理生效`, { duration: 3e3 });
   }
   function main() {
+    migrateStored();
     injectStyles();
     mountTrackingPanel();
     mountSidebarToggle();

@@ -1,6 +1,6 @@
 // 本機儲存封裝（Tampermonkey GM storage）。單一根物件，方便整包匯出/匯入。
 /* global GM_getValue, GM_setValue, GM_deleteValue */
-import { mergeSync, markEpisodesDone, isDeleted } from './util.js';
+import { mergeSync, markEpisodesDone, isDeleted, normalizeWatchMeta } from './util.js';
 
 const ROOT_KEY = 'a1p:data';
 // 同步設定（token / gistId 等）獨立存放，刻意不放進 ROOT_KEY，
@@ -26,8 +26,8 @@ function loadRoot() {
     const obj = raw ? JSON.parse(raw) : {};
     return {
       covers: obj.covers || {}, // { [catId]: { subjectId, cover, name, name_cn, score, manual, ts } }
-      watch: obj.watch || {}, // { [catId]: { [ep]: { currentTime, duration, done, watchedAt } } }
-      meta: obj.meta || {}, // { [catId]: { title, maxEpSeen } }
+      watch: obj.watch || {}, // { [catId]: { [ep]: { currentTime, duration, done, watchedAt, postId } } }（postId 重建單集頁網址）
+      meta: obj.meta || {}, // { [catId]: { title(乾淨無站名後綴), maxEpSeen, episodes:[{ep,postId}] } }
       settings: { ...DEFAULT_SETTINGS, ...(obj.settings || {}) },
     };
   } catch {
@@ -79,7 +79,9 @@ export function setEpisodeProgress(catId, ep, data) {
   const root = loadRoot();
   root.watch[catId] = root.watch[catId] || {};
   const prev = root.watch[catId][ep] || {};
-  root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
+  const rec = { ...prev, ...data, watchedAt: Date.now() };
+  if (rec.postId && rec.url) delete rec.url; // 改存 postId 後清掉舊版殘留的完整網址
+  root.watch[catId][ep] = rec;
   if (root.meta[catId] && root.meta[catId].deletedAt) delete root.meta[catId].deletedAt; // 再次觀看 → 復原（清除刪除墓碑）
   saveRoot(root);
 }
@@ -246,14 +248,28 @@ export function getSyncSubset() {
 }
 
 // 把遠端同步資料併入本機（逐集 watchedAt 合併）。回傳 { changed } 供決定是否重繪/再上傳。
+// 合併後順手 normalize：把舊格式（url / 髒 title）轉精簡，讓下一次 push 把精簡版推上雲端。
 export function applySyncedData(incoming) {
   const root = loadRoot();
   const before = JSON.stringify({ watch: root.watch, meta: root.meta });
   const merged = mergeSync({ watch: root.watch, meta: root.meta }, incoming || {});
-  const after = JSON.stringify(merged);
+  const norm = normalizeWatchMeta(merged);
+  const after = JSON.stringify({ watch: norm.watch, meta: norm.meta });
   if (after === before) return { changed: false };
-  root.watch = merged.watch;
-  root.meta = merged.meta;
+  root.watch = norm.watch;
+  root.meta = norm.meta;
   saveRoot(root);
   return { changed: true };
+}
+
+// 一次性把本機既有資料就地轉成精簡格式（啟動時呼叫）。回傳是否有變動。
+// 之後的同步會把精簡版推上雲端，既有資料不必逐集重看／逐部重進分類頁就能瘦身。
+export function migrateStored() {
+  const root = loadRoot();
+  const norm = normalizeWatchMeta({ watch: root.watch, meta: root.meta });
+  if (!norm.changed) return false;
+  root.watch = norm.watch;
+  root.meta = norm.meta;
+  saveRoot(root);
+  return true;
 }

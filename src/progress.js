@@ -2,7 +2,7 @@
 // 支援兩種觀看方式：單集頁 /{postId} 與「分類頁就地內嵌多集播放器」。
 import { getEpisode, setEpisodeProgress, getSettings, setSettings, getMeta } from './store.js';
 import { throttle, formatTime } from './util.js';
-import { waitForVideo, getContentH1, parseApiReq } from './dom.js';
+import { waitForVideo, getContentH1, parseApiReq, postIdFromPath, postIdFromUrl, postUrl } from './dom.js';
 import { toast, renderLastWatched } from './ui.js';
 import { parseTitle } from './parse.js';
 
@@ -195,7 +195,7 @@ function nextEpisodeUrl(animeKey, ep) {
   const later = meta.episodes
     .filter((e) => typeof e.ep === 'number' && e.ep > ep)
     .sort((a, b) => a.ep - b.ep);
-  return later.length ? later[0].url : null;
+  return later.length ? later[0].url || postUrl(later[0].postId) : null;
 }
 
 /**
@@ -253,7 +253,7 @@ export async function initEpisodePage(ctx) {
       currentTime: cur,
       duration: dur,
       done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
-      url: location.href, // 單集頁網址（跨分頁「繼續看」用）
+      postId: postIdFromPath(), // 跨分頁「繼續看」用；網址由 postId 重建
     });
   };
   const persistThrottled = throttle(() => persist(), 5000);
@@ -356,10 +356,10 @@ export function initCategoryPlayback(animeKey) {
     if (ep == null) return; // 還無法定位集數（標題未就緒）→ 不標記，待下次掃描重試
     bound.add(video);
     addWebFullButton(video);
-    // 該集單集頁網址（跨分頁「繼續看」用）：article 標題連結 → /{postId}
+    // 該集 postId（跨分頁「繼續看」用）：article 標題連結 → /{postId}
     const a = video.closest('article');
-    const epUrl =
-      ((a && a.querySelector('.entry-title a, a[rel="bookmark"]')) || {}).href || location.href;
+    const epHref = ((a && a.querySelector('.entry-title a, a[rel="bookmark"]')) || {}).href || '';
+    const epPostId = postIdFromUrl(epHref);
 
     if (settings.resume) {
       const rec = getEpisode(animeKey, ep);
@@ -386,7 +386,7 @@ export function initCategoryPlayback(animeKey) {
         currentTime: cur,
         duration: dur,
         done: done ?? computeDone(cur, dur, settings.autoNextThreshold),
-        url: epUrl,
+        postId: epPostId, // 網址由 postId 重建（分類頁就地播放時取自集連結）
       });
     };
     const persistThrottled = throttle(() => persist(), 5000);

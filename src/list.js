@@ -3,7 +3,7 @@
 import { animeKeyFromCategoryPath, yearFromText } from './dom.js';
 import { getCover, setCover, getAnimeWatch, getInProgressList, getSettings, setSettings } from './store.js';
 import { lookupCover, toCoverData } from './cover.js';
-import { parseLatestEp, pendingNewEpisodes } from './util.js';
+import { parseLatestEp, pendingNewEpisodes, cleanTitle } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { injectStyles } from './ui.js';
 
@@ -156,7 +156,7 @@ export function initListPage() {
     const infoMap = await fetchLatestEpMap(); // 取各番的繁體名/年份（封面查詢需要 title）
     for (const x of need) {
       const info = infoMap[x.catId];
-      const name = (info && info.name) || (x.meta && x.meta.title);
+      const name = (info && info.name) || cleanTitle(x.meta && x.meta.title) || null;
       if (!name) continue; // 無名稱可查 → 略過（之後進該動畫頁時仍會抓）
       bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
     }

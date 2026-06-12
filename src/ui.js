@@ -1,6 +1,7 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
 import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, deleteAnimeSynced, markAnimeWatched } from './store.js';
-import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget, isCaughtUp } from './util.js';
+import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget, isCaughtUp, cleanTitle } from './util.js';
+import { postUrl } from './dom.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
 
@@ -310,7 +311,7 @@ export function markCategoryEpisodes(animeKey) {
     if (!firstAnchor) firstAnchor = h;
     const parsed = parseTitle(h.textContent || '');
     if (parsed.ep != null) {
-      episodes.push({ ep: parsed.ep, postId, url: `https://anime1.me/${postId}` });
+      episodes.push({ ep: parsed.ep, postId }); // url 由 postId 重建，不入庫
       maxEp = Math.max(maxEp, parsed.ep);
     }
     const rec = parsed.ep != null ? getEpisode(animeKey, parsed.ep) : null;
@@ -323,7 +324,7 @@ export function markCategoryEpisodes(animeKey) {
       h.parentNode.appendChild(bar);
     }
   });
-  if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: document.title });
+  if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: cleanTitle(document.title) });
   return firstAnchor;
 }
 
@@ -434,9 +435,9 @@ export function renderLastWatched(animeKey, mountEl) {
   // 某集的單集頁網址：優先看當下存的網址，其次 meta 集數清單，最後退分類頁
   const findUrl = (ep) => {
     const r = watch[ep];
-    if (r && r.url) return r.url;
+    if (r && (r.url || r.postId)) return r.url || postUrl(r.postId);
     const it = meta && Array.isArray(meta.episodes) ? meta.episodes.find((m) => String(m.ep) === String(ep)) : null;
-    return it ? it.url : null;
+    return it ? it.url || postUrl(it.postId) : null;
   };
 
   const target = resumeTarget(watch);
@@ -626,7 +627,6 @@ function panelRowsHtml(list, delMode) {
   return list
     .map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : '';
-      const cleanTitle = (s) => String(s || '').replace(/\s*[–\-|]\s*Anime1.*$/i, '').trim();
       // 優先 anime1 原生繁體名（cover.local），其次 Bangumi 名，最後頁面標題。
       // Bangumi name_cn 多為簡體 → 簡轉繁顯示（local 已是繁體、name 為日文，皆不轉）。
       const name =
@@ -639,12 +639,12 @@ function panelRowsHtml(list, delMode) {
       const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : '#';
       const epUrl = (ep) => {
         const r = eps[ep];
-        if (r && r.url) return r.url; // 看過的集存了單集頁網址（跨分頁可用）
+        if (r && (r.url || r.postId)) return r.url || postUrl(r.postId); // 看過的集（跨分頁可用）
         const item =
           x.meta && Array.isArray(x.meta.episodes)
             ? x.meta.episodes.find((it) => String(it.ep) === String(ep))
             : null;
-        return item ? item.url : catUrl; // 不在當前分頁清單時退回全集連結
+        return item ? item.url || postUrl(item.postId) : catUrl; // 不在當前分頁清單時退回全集連結
       };
       // 以最後觀看的集為準（不論是否標記看完）：未看完→繼續看該集；已看完→指向下一集
       const target = resumeTarget(eps);
@@ -660,7 +660,7 @@ function panelRowsHtml(list, delMode) {
             ? x.meta.episodes.find((it) => String(it.ep) === String(nextEp))
             : null;
         if (nextItem) {
-          link = `<a href="${nextItem.url}">看下一集 第${nextEp}集</a>`;
+          link = `<a href="${nextItem.url || postUrl(nextItem.postId)}">看下一集 第${nextEp}集</a>`;
         } else if (x.newEps) {
           // 有新集、但本機 meta 尚未記錄該集單集頁（沒再進過分類頁）→ 連到分類頁看新集
           link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;

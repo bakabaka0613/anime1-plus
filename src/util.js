@@ -257,6 +257,51 @@ export function throttle(fn, wait) {
 }
 
 // 秒 → MM:SS 或 H:MM:SS
+// 去掉站名後綴「 – Anime1.me 動畫線上看」，只留動畫名。
+// 寫入時就存乾淨值（縮小同步資料），讀取時仍套用以相容舊資料。冪等。
+export function cleanTitle(s) {
+  return String(s || '')
+    .replace(/\s*[–\-|]\s*Anime1.*$/i, '')
+    .trim();
+}
+
+// 把舊格式的 { watch, meta } 整包就地轉成精簡格式（不改動輸入，回傳新物件 + changed）：
+//   watch[ep]：有 url → 解析出 postId 後刪 url（解析不到才保留 url 當退路）
+//   meta.episodes[]：能用 postId 重建的就刪去 url
+//   meta.title：去站名後綴
+// 用於一次性遷移與同步合併，讓既有資料不必逐集重看就轉新格式。
+export function normalizeWatchMeta(data) {
+  const src = data || {};
+  const before = JSON.stringify({ watch: src.watch || {}, meta: src.meta || {} });
+  const POST_ID = /anime1\.me\/(\d+)/;
+  const slimEp = (rec) => {
+    const r = { ...rec };
+    if (r.url) {
+      if (!r.postId) {
+        const m = String(r.url).match(POST_ID);
+        if (m) r.postId = m[1];
+      }
+      if (r.postId) delete r.url; // 能用 postId 重建才刪
+    }
+    return r;
+  };
+  const watch = {};
+  for (const cat of Object.keys(src.watch || {})) {
+    const eps = src.watch[cat] || {};
+    watch[cat] = {};
+    for (const ep of Object.keys(eps)) watch[cat][ep] = slimEp(eps[ep]);
+  }
+  const meta = {};
+  for (const cat of Object.keys(src.meta || {})) {
+    const m = { ...(src.meta[cat] || {}) };
+    if (typeof m.title === 'string') m.title = cleanTitle(m.title);
+    if (Array.isArray(m.episodes)) m.episodes = m.episodes.map(slimEp);
+    meta[cat] = m;
+  }
+  const after = JSON.stringify({ watch, meta });
+  return { watch, meta, changed: after !== before };
+}
+
 export function formatTime(sec) {
   if (!Number.isFinite(sec) || sec < 0) sec = 0;
   const s = Math.floor(sec % 60);
