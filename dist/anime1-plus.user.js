@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.4
+// @version      0.6.5
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -313,6 +313,19 @@
     });
     return out;
   }
+  function maxWatchedAt(animeWatch) {
+    let mx = 0;
+    for (const k of Object.keys(animeWatch || {})) {
+      const w = animeWatch[k] && animeWatch[k].watchedAt || 0;
+      if (w > mx) mx = w;
+    }
+    return mx;
+  }
+  function isDeleted(animeWatch, animeMeta) {
+    const d = animeMeta && animeMeta.deletedAt || 0;
+    if (!d) return false;
+    return d >= maxWatchedAt(animeWatch);
+  }
   function mergeSync(local, remote) {
     const lw = local && local.watch || {};
     const rw = remote && remote.watch || {};
@@ -336,14 +349,18 @@
     for (const catId of /* @__PURE__ */ new Set([...Object.keys(lm), ...Object.keys(rm)])) {
       const a = lm[catId];
       const b = rm[catId];
-      if (!a) meta[catId] = b;
-      else if (!b) meta[catId] = a;
+      let m;
+      if (!a) m = { ...b };
+      else if (!b) m = { ...a };
       else {
         const am = typeof a.maxEpSeen === "number" ? a.maxEpSeen : -Infinity;
         const bm = typeof b.maxEpSeen === "number" ? b.maxEpSeen : -Infinity;
-        const base = bm >= am ? b : a;
-        meta[catId] = { ...base, maxEpSeen: Math.max(am, bm) };
+        m = { ...bm >= am ? b : a, maxEpSeen: Math.max(am, bm) };
       }
+      const dz = Math.max(a && a.deletedAt || 0, b && b.deletedAt || 0);
+      if (dz && dz >= maxWatchedAt(watch[catId])) m.deletedAt = dz;
+      else delete m.deletedAt;
+      meta[catId] = m;
     }
     return { watch, meta };
   }
@@ -444,16 +461,21 @@
     saveRoot(root);
   }
   function getAnimeWatch(catId) {
-    return loadRoot().watch[catId] || {};
+    const root = loadRoot();
+    if (isDeleted(root.watch[catId], root.meta[catId])) return {};
+    return root.watch[catId] || {};
   }
   function getEpisode(catId, ep) {
-    return (loadRoot().watch[catId] || {})[ep] || null;
+    const root = loadRoot();
+    if (isDeleted(root.watch[catId], root.meta[catId])) return null;
+    return (root.watch[catId] || {})[ep] || null;
   }
   function setEpisodeProgress(catId, ep, data) {
     const root = loadRoot();
     root.watch[catId] = root.watch[catId] || {};
     const prev = root.watch[catId][ep] || {};
     root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
+    if (root.meta[catId] && root.meta[catId].deletedAt) delete root.meta[catId].deletedAt;
     saveRoot(root);
   }
   function setMeta(catId, data) {
@@ -468,6 +490,7 @@
     const root = loadRoot();
     const out = [];
     for (const catId of Object.keys(root.watch)) {
+      if (isDeleted(root.watch[catId], root.meta[catId])) continue;
       const eps = root.watch[catId];
       const epNums = Object.keys(eps);
       const anyUnfinished = epNums.some((e) => !eps[e].done);
@@ -504,10 +527,11 @@
     root.watch[catId] = markEpisodesDone(root.watch[catId] || {}, metaEps, Date.now());
     saveRoot(root);
   }
-  function clearAnimeWatch(catId) {
+  function deleteAnimeSynced(catId) {
     const root = loadRoot();
-    delete root.watch[catId];
-    delete root.meta[catId];
+    const eps = root.watch[catId];
+    if (eps) for (const ep of Object.keys(eps)) eps[ep] = { ...eps[ep], currentTime: 0 };
+    root.meta[catId] = { ...root.meta[catId] || {}, deletedAt: Date.now() };
     saveRoot(root);
   }
   function clearCover(catId) {
@@ -1135,8 +1159,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       e.preventDefault();
       e.stopPropagation();
       const name = del.dataset.name || "這部動畫";
-      if (!confirm(`確定刪除「${name}」的觀看進度？（保留封面快取）此動作無法復原。`)) return;
-      clearAnimeWatch(del.dataset.cat);
+      if (!confirm(`確定刪除「${name}」的觀看進度？
+此刪除會同步到其他裝置並隱藏；再次觀看此動畫即可復原。`)) return;
+      deleteAnimeSynced(del.dataset.cat);
       renderPanel(panel);
     });
   }

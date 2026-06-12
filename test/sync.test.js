@@ -103,6 +103,35 @@ test('meta 一邊缺 maxEpSeen → 視為 -∞，取有值的一邊', () => {
   assert.equal(meta.a.title, 'R');
 });
 
+// ---- 刪除墓碑（deletedAt）：軟刪除跨端同步 ----
+test('deletedAt 取兩邊較新，且刪除晚於觀看 → 保留（刪除跨端生效，不被合併還原）', () => {
+  const local = { watch: { a: { 1: { watchedAt: 100 } } }, meta: { a: { deletedAt: 200 } } };
+  const remote = { watch: { a: { 1: { watchedAt: 100 } } }, meta: { a: {} } };
+  const { meta } = mergeSync(local, remote);
+  assert.equal(meta.a.deletedAt, 200);
+});
+
+test('某端刪除後另一端又觀看（watchedAt > deletedAt）→ 清除墓碑（復原）', () => {
+  const local = { watch: { a: { 1: { watchedAt: 300 } } }, meta: { a: {} } }; // 又看了
+  const remote = { watch: { a: { 1: { watchedAt: 100 } } }, meta: { a: { deletedAt: 200 } } };
+  const { meta } = mergeSync(local, remote);
+  assert.equal(meta.a.deletedAt, undefined);
+});
+
+test('兩端皆有 deletedAt → 取較新者', () => {
+  const local = { watch: {}, meta: { a: { deletedAt: 200 } } };
+  const remote = { watch: {}, meta: { a: { deletedAt: 500 } } };
+  const { meta } = mergeSync(local, remote);
+  assert.equal(meta.a.deletedAt, 500);
+});
+
+test('未刪除的 meta 不應冒出 deletedAt 欄位', () => {
+  const local = { watch: {}, meta: { a: { maxEpSeen: 5 } } };
+  const remote = { watch: {}, meta: { a: { maxEpSeen: 8 } } };
+  const { meta } = mergeSync(local, remote);
+  assert.equal('deletedAt' in meta.a, false);
+});
+
 // ---- 不可變：不改動輸入 ----
 test('不可變：不修改輸入物件', () => {
   const local = { watch: { a: { 1: { watchedAt: 10 } } }, meta: {} };

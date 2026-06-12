@@ -167,6 +167,25 @@ export function markEpisodesDone(animeWatch, metaEpisodes, now) {
   return out;
 }
 
+// per-anime watch 中最後一次觀看的時間戳（無記錄→0）。
+function maxWatchedAt(animeWatch) {
+  let mx = 0;
+  for (const k of Object.keys(animeWatch || {})) {
+    const w = (animeWatch[k] && animeWatch[k].watchedAt) || 0;
+    if (w > mx) mx = w;
+  }
+  return mx;
+}
+
+// 軟刪除墓碑判定：該動畫是否「已刪除」（在追番清單/各處隱藏）。
+// 規則＝有 deletedAt 且其不早於最後一次觀看（deletedAt >= 最後 watchedAt）；
+// 刪除後又觀看（watchedAt 較新）→ 判為未刪除，達成「再看一次即復原」。用於同步刪除跨端生效。
+export function isDeleted(animeWatch, animeMeta) {
+  const d = (animeMeta && animeMeta.deletedAt) || 0;
+  if (!d) return false;
+  return d >= maxWatchedAt(animeWatch);
+}
+
 // 多端同步合併（GitHub Gist）：把兩份 { watch, meta } 併成一份，回傳新物件（不改動輸入）。
 // watch 逐集（per-episode）按 watchedAt 取較新的一筆——絕不可整包覆蓋，否則兩端看不同集會互相清掉。
 // meta 的 maxEpSeen 取兩邊較大（單調遞增，是更新提醒的依據）；title/episodes 採 maxEpSeen 大的一邊。
@@ -195,14 +214,20 @@ export function mergeSync(local, remote) {
   for (const catId of new Set([...Object.keys(lm), ...Object.keys(rm)])) {
     const a = lm[catId];
     const b = rm[catId];
-    if (!a) meta[catId] = b;
-    else if (!b) meta[catId] = a;
+    let m;
+    if (!a) m = { ...b };
+    else if (!b) m = { ...a };
     else {
       const am = typeof a.maxEpSeen === 'number' ? a.maxEpSeen : -Infinity;
       const bm = typeof b.maxEpSeen === 'number' ? b.maxEpSeen : -Infinity;
-      const base = bm >= am ? b : a; // title/episodes 隨 maxEpSeen 大的一邊
-      meta[catId] = { ...base, maxEpSeen: Math.max(am, bm) };
+      m = { ...(bm >= am ? b : a), maxEpSeen: Math.max(am, bm) }; // title/episodes 隨 maxEpSeen 大的一邊
     }
+    // 刪除墓碑 deletedAt：取兩邊較新（刪除跨端生效）；但若合併後該番有更新的觀看
+    // （watchedAt > deletedAt）則代表已復原 → 清掉墓碑，避免殘留與不一致。
+    const dz = Math.max((a && a.deletedAt) || 0, (b && b.deletedAt) || 0);
+    if (dz && dz >= maxWatchedAt(watch[catId])) m.deletedAt = dz;
+    else delete m.deletedAt;
+    meta[catId] = m;
   }
 
   return { watch, meta };

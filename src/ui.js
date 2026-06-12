@@ -1,5 +1,5 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
-import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, clearAnimeWatch, markAnimeWatched } from './store.js';
+import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, deleteAnimeSynced, markAnimeWatched } from './store.js';
 import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget, isCaughtUp } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
@@ -568,8 +568,8 @@ export function mountTrackingPanel() {
     e.preventDefault();
     e.stopPropagation();
     const name = del.dataset.name || '這部動畫';
-    if (!confirm(`確定刪除「${name}」的觀看進度？（保留封面快取）此動作無法復原。`)) return;
-    clearAnimeWatch(del.dataset.cat);
+    if (!confirm(`確定刪除「${name}」的觀看進度？\n此刪除會同步到其他裝置並隱藏；再次觀看此動畫即可復原。`)) return;
+    deleteAnimeSynced(del.dataset.cat);
     renderPanel(panel);
   });
 }

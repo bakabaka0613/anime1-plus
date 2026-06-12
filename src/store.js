@@ -1,6 +1,6 @@
 // 本機儲存封裝（Tampermonkey GM storage）。單一根物件，方便整包匯出/匯入。
 /* global GM_getValue, GM_setValue, GM_deleteValue */
-import { mergeSync, markEpisodesDone } from './util.js';
+import { mergeSync, markEpisodesDone, isDeleted } from './util.js';
 
 const ROOT_KEY = 'a1p:data';
 // 同步設定（token / gistId 等）獨立存放，刻意不放進 ROOT_KEY，
@@ -63,17 +63,24 @@ export function setCover(catId, data) {
 }
 
 // ---- 觀看記錄 ----
+// 已軟刪除（墓碑）的動畫在各處（追番清單、首頁 +N、分類頁標記、續播）一律視為「未追蹤」→
+// 回傳空，直到再次觀看（setEpisodeProgress 會清掉墓碑）才復原。
 export function getAnimeWatch(catId) {
-  return loadRoot().watch[catId] || {};
+  const root = loadRoot();
+  if (isDeleted(root.watch[catId], root.meta[catId])) return {};
+  return root.watch[catId] || {};
 }
 export function getEpisode(catId, ep) {
-  return (loadRoot().watch[catId] || {})[ep] || null;
+  const root = loadRoot();
+  if (isDeleted(root.watch[catId], root.meta[catId])) return null;
+  return (root.watch[catId] || {})[ep] || null;
 }
 export function setEpisodeProgress(catId, ep, data) {
   const root = loadRoot();
   root.watch[catId] = root.watch[catId] || {};
   const prev = root.watch[catId][ep] || {};
   root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
+  if (root.meta[catId] && root.meta[catId].deletedAt) delete root.meta[catId].deletedAt; // 再次觀看 → 復原（清除刪除墓碑）
   saveRoot(root);
 }
 
@@ -92,6 +99,7 @@ export function getInProgressList() {
   const root = loadRoot();
   const out = [];
   for (const catId of Object.keys(root.watch)) {
+    if (isDeleted(root.watch[catId], root.meta[catId])) continue; // 已軟刪除 → 不顯示（看不到＝刪除）
     const eps = root.watch[catId];
     const epNums = Object.keys(eps);
     const anyUnfinished = epNums.some((e) => !eps[e].done);
@@ -133,6 +141,18 @@ export function markAnimeWatched(catId) {
   const root = loadRoot();
   const metaEps = root.meta[catId] && root.meta[catId].episodes;
   root.watch[catId] = markEpisodesDone(root.watch[catId] || {}, metaEps, Date.now());
+  saveRoot(root);
+}
+
+// 軟刪除單一動畫（追番清單 🗑）：標記 deletedAt 墓碑並清零各集觀看時間。
+// 為何不直接移除：硬刪除會被雲端 pull-merge 還原（remote 仍有記錄）。改打墓碑，
+// 較新的 deletedAt 在 mergeSync 中勝出 → 刪除得以同步到其他端並隱藏（看不到＝刪除）。
+// 再次觀看該番（watchedAt 變新）→ isDeleted 判為未刪除、setEpisodeProgress 清墓碑而復原。
+export function deleteAnimeSynced(catId) {
+  const root = loadRoot();
+  const eps = root.watch[catId];
+  if (eps) for (const ep of Object.keys(eps)) eps[ep] = { ...eps[ep], currentTime: 0 }; // 清零觀看時間、其餘保留
+  root.meta[catId] = { ...(root.meta[catId] || {}), deletedAt: Date.now() };
   saveRoot(root);
 }
 

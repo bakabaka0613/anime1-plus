@@ -52,9 +52,17 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   "finished / caught-up" below — each ordered by last-watched desc (`isCaughtUp` in `util.js` drives both
   the sort and which terminal label shows). **Hold Shift + click 📺** to enter manage mode: per anime a
   ✓ "mark watched" button (`markAnimeWatched` → marks every known ep done so it drops to the finished
-  section; hidden when already caught-up) and a 🗑 "delete progress" button (keeps cover cache). Plain
-  open has no buttons to avoid mis-clicks. Hovering a row's small cover thumbnail pops a larger preview
-  (floated outside the panel since it has `overflow:auto`).
+  section; hidden when already caught-up) and a 🗑 "delete progress" button. Manage mode is also reachable
+  by long-pressing 📺 for 3s (touch devices). Plain open has no buttons to avoid mis-clicks. Hovering a
+  row's small cover thumbnail pops a larger preview (floated outside the panel since it has `overflow:auto`).
+- 🗑 is a SYNCED soft-delete (`deleteAnimeSynced`), not a hard delete: a hard delete gets resurrected by
+  the cloud pull-merge. Instead it zeroes currentTime and stamps `meta[catId].deletedAt = now`. `isDeleted`
+  (`util.js`) = `deletedAt >= max(watchedAt)`; `mergeSync` carries `deletedAt` as the max and drops it once
+  a newer watch exists (re-watch wins). Tombstoned anime read as empty everywhere (`getAnimeWatch`/
+  `getEpisode` return empty/null, `getInProgressList` skips them), and `setEpisodeProgress` clears the
+  tombstone on the next real write → "watch it again to restore". The 0-progress-flash guard in
+  `progress.js` means setEpisodeProgress only fires on genuine playback, so re-watch-clears is safe.
+  (`clearAnimeWatch` is now unused — left in `store.js` as a pre-existing local hard-delete helper.)
 - zh-Hant→zh-Hans (OpenCC, jsdelivr `@require`) before Bangumi search (its index is mostly Simplified);
   if name/name_cn don't match, fall back to comparing Bangumi aliases. Cover card main title uses the
   **original anime1 Traditional name** (Bangumi Chinese is often Simplified).

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring, isCaughtUp, markEpisodesDone } from '../src/util.js';
+import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring, isCaughtUp, markEpisodesDone, isDeleted } from '../src/util.js';
 
 // ---- parseLatestEp：解析首頁「集數」欄 → 最新一般集數 ----
 test('連載中(N) 取括號內集數', () => {
@@ -200,4 +200,19 @@ test('不改動輸入物件', () => {
   const copy = JSON.parse(JSON.stringify(watch));
   markEpisodesDone(watch, [{ ep: 1 }, { ep: 2 }], 1000);
   assert.deepEqual(watch, copy);
+});
+
+// ---- isDeleted：軟刪除墓碑判定（追番清單同步刪除）----
+test('isDeleted：deletedAt 晚於最後觀看 → 已刪除（true）', () => {
+  assert.equal(isDeleted({ 1: { watchedAt: 100 } }, { deletedAt: 200 }), true);
+});
+test('isDeleted：刪除後又觀看（watchedAt 較新）→ 復原、未刪除（false）', () => {
+  assert.equal(isDeleted({ 1: { watchedAt: 300 } }, { deletedAt: 200 }), false);
+});
+test('isDeleted：無 deletedAt / 無 meta → false', () => {
+  assert.equal(isDeleted({ 1: { watchedAt: 100 } }, { maxEpSeen: 3 }), false);
+  assert.equal(isDeleted({ 1: { watchedAt: 100 } }, null), false);
+});
+test('isDeleted：無任何觀看記錄但有 deletedAt → 已刪除（true）', () => {
+  assert.equal(isDeleted({}, { deletedAt: 50 }), true);
 });
