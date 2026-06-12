@@ -21,6 +21,7 @@ import {
   mountTrackingPanel,
   mountSidebarToggle,
   renderLastWatched,
+  collapseToSinglePlayer,
   toast,
 } from './ui.js';
 import { exportAll, importAll, getSettings, setSettings, clearAnime } from './store.js';
@@ -41,6 +42,8 @@ function initCategoryPage() {
   const animeName = getAnimeTitle();
   renderLastWatched(animeKey, mountEl);
   resolveCover({ animeKey, title: animeName, year, mountEl });
+  // 折疊重複播放器：上方選集、下方單一播放器
+  collapseToSinglePlayer(animeKey);
   // 使用者就在分類頁內嵌播放器看 → 在此記錄真實播放進度
   initCategoryPlayback(animeKey);
 

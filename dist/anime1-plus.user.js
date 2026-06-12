@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.0
+// @version      0.4.1
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -489,6 +489,21 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   display:flex;align-items:center;justify-content:center;opacity:.65}
 .a1p-webfull-btn:hover{opacity:1;background:#000c}
 .a1p-webfull .a1p-webfull-btn{top:12px;right:12px}
+/* 分類頁：上方選集、下方單一播放器（隱藏其餘集的 article）*/
+.a1p-ep-selector{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0;padding:10px 12px;
+  background:#1b1b1f;border:1px solid #2a2a30;border-radius:8px}
+.a1p-ep-label{color:#9aa0a6;font-size:12px}
+.a1p-ep-btn{cursor:pointer;border:1px solid #45464c;background:#26272c;color:#e8e8ea;
+  border-radius:6px;padding:5px 11px;font-size:13px;min-width:38px;text-align:center}
+.a1p-ep-btn:hover{background:#303138}
+.a1p-ep-btn.a1p-ep-active{background:#7aa2f7;color:#0b1020;border-color:#7aa2f7;font-weight:700}
+.a1p-ep-btn.a1p-ep-done-btn{opacity:.6}
+.a1p-ep-btn.a1p-ep-done-btn::after{content:" ✓";color:#7ee29a}
+.a1p-ep-btn.a1p-ep-done-btn.a1p-ep-active::after{color:#0b1020}
+.a1p-ep-page{color:#9ec1ff;text-decoration:none;padding:5px 9px;border:1px solid #45464c;
+  border-radius:6px;font-size:13px}
+.a1p-ep-page:hover{background:#303138}
+.a1p-ep-hidden{display:none!important}
 `;
     const el = document.createElement("style");
     el.textContent = css;
@@ -607,6 +622,81 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     });
     if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: document.title });
     return firstAnchor;
+  }
+  function appendPagination(bar) {
+    const links = document.querySelectorAll(
+      ".pagination a, .nav-links a, a.page-numbers, .wp-pagenavi a, .page-nav a"
+    );
+    if (!links.length) return;
+    const sep = document.createElement("span");
+    sep.className = "a1p-ep-label";
+    sep.textContent = "｜其他頁：";
+    bar.appendChild(sep);
+    const seen = /* @__PURE__ */ new Set();
+    links.forEach((a) => {
+      const href = a.getAttribute("href");
+      if (!href || seen.has(href)) return;
+      seen.add(href);
+      const link = document.createElement("a");
+      link.className = "a1p-ep-page";
+      link.href = href;
+      link.textContent = (a.textContent || "").trim() || "頁";
+      bar.appendChild(link);
+    });
+  }
+  function collapseToSinglePlayer(animeKey) {
+    injectStyles();
+    if (document.querySelector(".a1p-ep-selector")) return;
+    const articles = Array.from(document.querySelectorAll("article")).filter(
+      (a) => a.querySelector(".entry-content") && a.querySelector(".entry-title")
+    );
+    if (articles.length < 2) return;
+    const eps = articles.map((a) => ({
+      article: a,
+      ep: parseTitle(a.querySelector(".entry-title").textContent || "").ep
+    }));
+    eps.sort((a, b) => (a.ep ?? 1e9) - (b.ep ?? 1e9));
+    const watch = getAnimeWatch(animeKey);
+    const bar = document.createElement("div");
+    bar.className = "a1p-ep-selector";
+    const label = document.createElement("span");
+    label.className = "a1p-ep-label";
+    label.textContent = "選集：";
+    bar.appendChild(label);
+    const select = (i) => {
+      eps.forEach((e, j) => {
+        e.article.classList.toggle("a1p-ep-hidden", j !== i);
+        e.btn.classList.toggle("a1p-ep-active", j === i);
+      });
+      window.dispatchEvent(new Event("resize"));
+    };
+    eps.forEach((e, i) => {
+      const btn = document.createElement("button");
+      btn.className = "a1p-ep-btn";
+      btn.type = "button";
+      btn.textContent = e.ep != null ? String(e.ep) : "#";
+      const rec = e.ep != null ? watch[e.ep] : null;
+      if (rec && rec.done) btn.classList.add("a1p-ep-done-btn");
+      btn.addEventListener("click", () => select(i));
+      e.btn = btn;
+      bar.appendChild(btn);
+    });
+    appendPagination(bar);
+    articles[0].parentNode.insertBefore(bar, articles[0]);
+    let defaultIdx = eps.length - 1;
+    let lastEp = null;
+    let lastAt = 0;
+    for (const k of Object.keys(watch)) {
+      if ((watch[k].watchedAt || 0) > lastAt) {
+        lastAt = watch[k].watchedAt;
+        lastEp = k;
+      }
+    }
+    if (lastEp != null) {
+      const idx = eps.findIndex((x) => String(x.ep) === String(lastEp));
+      if (idx >= 0) defaultIdx = idx;
+    }
+    select(defaultIdx);
   }
   function renderLastWatched(animeKey, mountEl) {
     injectStyles();
@@ -1465,6 +1555,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const animeName = getAnimeTitle();
     renderLastWatched(animeKey, mountEl);
     resolveCover({ animeKey, title: animeName, year, mountEl });
+    collapseToSinglePlayer(animeKey);
     initCategoryPlayback(animeKey);
     const pageTitle = document.querySelector(".page-title");
     if (pageTitle) pageTitle.style.display = "none";
