@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.14
+// @version      0.5.15
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -466,6 +466,12 @@
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
 .a1p-thumb-unknown{border:1px dashed #6a6a72}
+/* 封面待確認角標：低信心仍放圖，左上角標提示，誘導點進分類頁重新比對／手選 */
+.a1p-cover-uncertain{display:none}
+body.a1p-grid-on .a1p-grid-table tbody td:first-child{position:relative}
+body.a1p-grid-on .a1p-cover-uncertain{display:flex;align-items:center;gap:3px;position:absolute;
+  top:6px;left:6px;z-index:2;pointer-events:none;background:#3a2f1ee6;color:#e2c47e;font-size:11px;
+  font-weight:600;line-height:1;padding:3px 7px;border-radius:99px;border:1px solid #6b5a2e;backdrop-filter:blur(2px)}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
@@ -1456,6 +1462,21 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (m) return { key: `cat:${m[1]}`, year: null };
     return null;
   }
+  function markCover(img, data) {
+    const td = img && img.parentNode;
+    if (!td) return;
+    const uncertain = !!(data && data.tentative);
+    let tag = td.querySelector(".a1p-cover-uncertain");
+    if (uncertain && !tag) {
+      tag = document.createElement("span");
+      tag.className = "a1p-cover-uncertain";
+      tag.textContent = "? 待確認";
+      tag.title = "封面比對信心較低，點擊進入該動畫可重新比對或手動選擇";
+      td.appendChild(tag);
+    } else if (!uncertain && tag) {
+      tag.remove();
+    }
+  }
   function initListPage() {
     injectStyles();
     const seen = /* @__PURE__ */ new WeakSet();
@@ -1498,23 +1519,23 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const res = await lookupCover({ animeKey: key, title: name, year });
       if (res.cached) {
         img.src = res.data.cover || "";
+        markCover(img, res.data);
         return true;
       }
       if (res.data) {
         setCover(key, res.data);
         img.src = res.data.cover || "";
+        markCover(img, res.data);
         return true;
       }
-      if (res.ranked && res.ranked.length && res.ranked[0].subject) {
-        const top = res.ranked[0];
-        const nameScore2 = top.breakdown && top.breakdown.name || 0;
+      const top = res.ranked && res.ranked[0];
+      if (top && top.subject) {
         const data = toCoverData(top);
-        if (nameScore2 >= 0.7 && data.cover) {
+        if (data.cover) {
           data.tentative = true;
           setCover(key, data);
           img.src = data.cover;
-        } else {
-          img.classList.add("a1p-thumb-unknown");
+          markCover(img, data);
         }
         return true;
       }
@@ -1554,6 +1575,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const cached = getCover(ref.key);
       if (cached && cached.cover) {
         img.src = cached.cover;
+        markCover(img, cached);
         return;
       }
       img._a1pJob = { img, key: ref.key, name, year: ref.year };

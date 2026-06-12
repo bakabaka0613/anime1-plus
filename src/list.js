@@ -30,6 +30,24 @@ function animeRef(a) {
   return null;
 }
 
+// 依封面資料的信心在海報上加/移除「待確認」角標。
+// tentative=true（列表頁低信心暫定）→ 顯示提示，誘導使用者點進分類頁重新比對／手選。
+function markCover(img, data) {
+  const td = img && img.parentNode;
+  if (!td) return;
+  const uncertain = !!(data && data.tentative);
+  let tag = td.querySelector('.a1p-cover-uncertain');
+  if (uncertain && !tag) {
+    tag = document.createElement('span');
+    tag.className = 'a1p-cover-uncertain';
+    tag.textContent = '? 待確認';
+    tag.title = '封面比對信心較低，點擊進入該動畫可重新比對或手動選擇';
+    td.appendChild(tag);
+  } else if (!uncertain && tag) {
+    tag.remove();
+  }
+}
+
 export function initListPage() {
   injectStyles();
   const seen = new WeakSet();
@@ -75,28 +93,30 @@ export function initListPage() {
     const res = await lookupCover({ animeKey: key, title: name, year });
     if (res.cached) {
       img.src = res.data.cover || '';
+      markCover(img, res.data);
       return true;
     }
     if (res.data) {
+      // 高信心：直接採用、無提示
       setCover(key, res.data);
       img.src = res.data.cover || '';
+      markCover(img, res.data);
       return true;
     }
-    if (res.ranked && res.ranked.length && res.ranked[0].subject) {
-      const top = res.ranked[0];
-      const nameScore = (top.breakdown && top.breakdown.name) || 0;
+    const top = res.ranked && res.ranked[0];
+    if (top && top.subject) {
       const data = toCoverData(top);
-      // 只在名稱夠相似時才用暫定封面，避免列表顯示雜項錯圖；嚴謹比對（含別名）留給分類頁
-      if (nameScore >= 0.7 && data.cover) {
+      if (data.cover) {
+        // 信心不足也照放圖，標記「待確認」誘導使用者點進分類頁重新比對／手選；
+        // 存成 tentative → 分類頁 lookupCover 不直接採用，會重新嚴謹比對。
         data.tentative = true;
         setCover(key, data);
         img.src = data.cover;
-      } else {
-        img.classList.add('a1p-thumb-unknown'); // 名稱不夠像 → 占位，進分類頁再嚴謹比對
+        markCover(img, data);
       }
       return true;
     }
-    return false;
+    return false; // 完全無可用封面 → 交給 retry，用完標 unknown 占位
   }
 
   // 把單一 table row 變成卡片：在名稱格最前插入封面圖
@@ -138,6 +158,7 @@ export function initListPage() {
     const cached = getCover(ref.key);
     if (cached && cached.cover) {
       img.src = cached.cover;
+      markCover(img, cached);
       return;
     }
     img._a1pJob = { img, key: ref.key, name, year: ref.year };
