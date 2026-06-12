@@ -362,18 +362,11 @@ export function collapseToSinglePlayer(animeKey) {
   appendPagination(bar);
   articles[0].parentNode.insertBefore(bar, articles[0]);
 
-  // 預設選「上次看到的集」，否則最新集（升序最後）
+  // 預設選集：最後看的未看完→該集續播；已看完→下一集；下一集不在本頁或無記錄→最新集（升序最後）
   let defaultIdx = eps.length - 1;
-  let lastEp = null;
-  let lastAt = 0;
-  for (const k of Object.keys(watch)) {
-    if ((watch[k].watchedAt || 0) > lastAt) {
-      lastAt = watch[k].watchedAt;
-      lastEp = k;
-    }
-  }
-  if (lastEp != null) {
-    const idx = eps.findIndex((x) => String(x.ep) === String(lastEp));
+  const target = resumeTarget(watch);
+  if (target.mode === 'resume' || target.mode === 'next') {
+    const idx = eps.findIndex((x) => String(x.ep) === String(target.ep));
     if (idx >= 0) defaultIdx = idx;
   }
   select(defaultIdx);
@@ -392,19 +385,37 @@ export function renderLastWatched(animeKey, mountEl) {
   }
   const rec = watch[lastEp];
   const meta = getMeta(animeKey);
-  const item = meta && Array.isArray(meta.episodes) ? meta.episodes.find((it) => String(it.ep) === String(lastEp)) : null;
-  const status = rec.done ? '已看完' : `看到 ${formatTime(rec.currentTime || 0)}`;
   const num = String(animeKey).replace(/^cat:/, '');
   const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : null;
-  // 優先用看當下存的單集頁網址（不論進度集在哪一分頁都能跳）
-  const url = rec.url || (item && item.url) || catUrl;
+  // 某集的單集頁網址：優先看當下存的網址，其次 meta 集數清單，最後退分類頁
+  const findUrl = (ep) => {
+    const r = watch[ep];
+    if (r && r.url) return r.url;
+    const it = meta && Array.isArray(meta.episodes) ? meta.episodes.find((m) => String(m.ep) === String(ep)) : null;
+    return it ? it.url : null;
+  };
+
+  const target = resumeTarget(watch);
+  let text;
+  let link = '';
+  if (target.mode === 'resume') {
+    // 最後看的未看完 → 繼續看該集
+    text = `上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（看到 ${formatTime(rec.currentTime || 0)}）`;
+    const u = findUrl(target.ep) || catUrl;
+    if (u) link = `<a class="a1p-btn" href="${u}">▶ 繼續看</a>`;
+  } else {
+    // 最後看的已看完 → 指向下一集；meta 還沒有下一集（沒再進分類頁）則退回分類頁看最新集
+    text = `上次看完 <b>第 ${escapeHtml(String(lastEp))} 話</b>`;
+    const u = findUrl(target.ep);
+    if (u) link = `<a class="a1p-btn" href="${u}">▶ 看下一集 第 ${escapeHtml(String(target.ep))} 話</a>`;
+    else if (catUrl) link = `<a class="a1p-btn" href="${catUrl}">▶ 看最新集</a>`;
+  }
 
   const old = document.querySelector('.a1p-last');
   if (old) old.remove();
   const bar = document.createElement('div');
   bar.className = 'a1p-last';
-  const link = url ? `<a class="a1p-btn" href="${url}">▶ 繼續看</a>` : '';
-  bar.innerHTML = `<span>上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（${status}）</span>${link}`;
+  bar.innerHTML = `<span>${text}</span>${link}`;
   mountEl.parentNode.insertBefore(bar, mountEl);
 }
 

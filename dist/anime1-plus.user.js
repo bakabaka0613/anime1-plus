@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.25
+// @version      0.5.26
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -813,16 +813,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     appendPagination(bar);
     articles[0].parentNode.insertBefore(bar, articles[0]);
     let defaultIdx = eps.length - 1;
-    let lastEp = null;
-    let lastAt = 0;
-    for (const k of Object.keys(watch)) {
-      if ((watch[k].watchedAt || 0) > lastAt) {
-        lastAt = watch[k].watchedAt;
-        lastEp = k;
-      }
-    }
-    if (lastEp != null) {
-      const idx = eps.findIndex((x) => String(x.ep) === String(lastEp));
+    const target = resumeTarget(watch);
+    if (target.mode === "resume" || target.mode === "next") {
+      const idx = eps.findIndex((x) => String(x.ep) === String(target.ep));
       if (idx >= 0) defaultIdx = idx;
     }
     select(defaultIdx);
@@ -839,17 +832,32 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     }
     const rec = watch[lastEp];
     const meta = getMeta(animeKey);
-    const item = meta && Array.isArray(meta.episodes) ? meta.episodes.find((it) => String(it.ep) === String(lastEp)) : null;
-    const status = rec.done ? "已看完" : `看到 ${formatTime(rec.currentTime || 0)}`;
     const num = String(animeKey).replace(/^cat:/, "");
     const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : null;
-    const url = rec.url || item && item.url || catUrl;
+    const findUrl = (ep) => {
+      const r = watch[ep];
+      if (r && r.url) return r.url;
+      const it = meta && Array.isArray(meta.episodes) ? meta.episodes.find((m) => String(m.ep) === String(ep)) : null;
+      return it ? it.url : null;
+    };
+    const target = resumeTarget(watch);
+    let text;
+    let link = "";
+    if (target.mode === "resume") {
+      text = `上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（看到 ${formatTime(rec.currentTime || 0)}）`;
+      const u = findUrl(target.ep) || catUrl;
+      if (u) link = `<a class="a1p-btn" href="${u}">▶ 繼續看</a>`;
+    } else {
+      text = `上次看完 <b>第 ${escapeHtml(String(lastEp))} 話</b>`;
+      const u = findUrl(target.ep);
+      if (u) link = `<a class="a1p-btn" href="${u}">▶ 看下一集 第 ${escapeHtml(String(target.ep))} 話</a>`;
+      else if (catUrl) link = `<a class="a1p-btn" href="${catUrl}">▶ 看最新集</a>`;
+    }
     const old = document.querySelector(".a1p-last");
     if (old) old.remove();
     const bar = document.createElement("div");
     bar.className = "a1p-last";
-    const link = url ? `<a class="a1p-btn" href="${url}">▶ 繼續看</a>` : "";
-    bar.innerHTML = `<span>上次看到 <b>第 ${escapeHtml(String(lastEp))} 話</b>（${status}）</span>${link}`;
+    bar.innerHTML = `<span>${text}</span>${link}`;
     mountEl.parentNode.insertBefore(bar, mountEl);
   }
   function mountSidebarToggle() {
