@@ -82,11 +82,17 @@ export function initListPage() {
       return true;
     }
     if (res.ranked && res.ranked.length && res.ranked[0].subject) {
-      const data = toCoverData(res.ranked[0]);
-      data.tentative = true;
-      if (!data.cover) return false;
-      setCover(key, data);
-      img.src = data.cover;
+      const top = res.ranked[0];
+      const nameScore = (top.breakdown && top.breakdown.name) || 0;
+      const data = toCoverData(top);
+      // 只在名稱夠相似時才用暫定封面，避免列表顯示雜項錯圖；嚴謹比對（含別名）留給分類頁
+      if (nameScore >= 0.7 && data.cover) {
+        data.tentative = true;
+        setCover(key, data);
+        img.src = data.cover;
+      } else {
+        img.classList.add('a1p-thumb-unknown'); // 名稱不夠像 → 占位，進分類頁再嚴謹比對
+      }
       return true;
     }
     return false;

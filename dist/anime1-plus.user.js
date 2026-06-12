@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.11
+// @version      0.5.12
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1482,11 +1482,16 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         return true;
       }
       if (res.ranked && res.ranked.length && res.ranked[0].subject) {
-        const data = toCoverData(res.ranked[0]);
-        data.tentative = true;
-        if (!data.cover) return false;
-        setCover(key, data);
-        img.src = data.cover;
+        const top = res.ranked[0];
+        const nameScore2 = top.breakdown && top.breakdown.name || 0;
+        const data = toCoverData(top);
+        if (nameScore2 >= 0.7 && data.cover) {
+          data.tentative = true;
+          setCover(key, data);
+          img.src = data.cover;
+        } else {
+          img.classList.add("a1p-thumb-unknown");
+        }
         return true;
       }
       return false;
