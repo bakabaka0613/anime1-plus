@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.6
+// @version      0.5.7
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -186,6 +186,136 @@
     const { type, rest: r2 } = extractType(r1, epRaw);
     const { seasonNum, rest: r3 } = extractSeason(r2);
     return { raw: title, ep, epRaw, seasonNum, type, baseName: normalizeSpace(r3) };
+  }
+
+  // src/store.js
+  var ROOT_KEY = "a1p:data";
+  var DEFAULT_SETTINGS = {
+    autoNext: true,
+    // 看完自動下一集
+    autoNextThreshold: 0.9,
+    // 看完判定比例
+    resume: true,
+    // 續播
+    shortcuts: true,
+    // 鍵盤快捷鍵
+    seekSeconds: 5,
+    // 方向鍵快進/後退秒數
+    rememberRate: true,
+    // 記憶播放速度
+    listThumbs: true,
+    // 列表頁增強（封面/卡片）
+    gridView: true,
+    // 列表頁卡片檢視（false = 原始列表）
+    cardWidth: 250,
+    // 卡片最小寬度 px
+    sidebarOpen: false
+    // 右側欄展開（預設折疊）
+  };
+  function loadRoot() {
+    try {
+      const raw = GM_getValue(ROOT_KEY, "");
+      const obj = raw ? JSON.parse(raw) : {};
+      return {
+        covers: obj.covers || {},
+        // { [catId]: { subjectId, cover, name, name_cn, score, manual, ts } }
+        watch: obj.watch || {},
+        // { [catId]: { [ep]: { currentTime, duration, done, watchedAt } } }
+        meta: obj.meta || {},
+        // { [catId]: { title, maxEpSeen } }
+        settings: { ...DEFAULT_SETTINGS, ...obj.settings || {} }
+      };
+    } catch {
+      return { covers: {}, watch: {}, meta: {}, settings: { ...DEFAULT_SETTINGS } };
+    }
+  }
+  function saveRoot(root) {
+    GM_setValue(ROOT_KEY, JSON.stringify(root));
+  }
+  function getCover(catId) {
+    return loadRoot().covers[catId] || null;
+  }
+  function setCover(catId, data) {
+    const root = loadRoot();
+    root.covers[catId] = { ...data, ts: Date.now() };
+    saveRoot(root);
+  }
+  function getAnimeWatch(catId) {
+    return loadRoot().watch[catId] || {};
+  }
+  function getEpisode(catId, ep) {
+    return (loadRoot().watch[catId] || {})[ep] || null;
+  }
+  function setEpisodeProgress(catId, ep, data) {
+    const root = loadRoot();
+    root.watch[catId] = root.watch[catId] || {};
+    const prev = root.watch[catId][ep] || {};
+    root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
+    saveRoot(root);
+  }
+  function setMeta(catId, data) {
+    const root = loadRoot();
+    root.meta[catId] = { ...root.meta[catId] || {}, ...data };
+    saveRoot(root);
+  }
+  function getMeta(catId) {
+    return loadRoot().meta[catId] || null;
+  }
+  function getInProgressList() {
+    const root = loadRoot();
+    const out = [];
+    for (const catId of Object.keys(root.watch)) {
+      const eps = root.watch[catId];
+      const epNums = Object.keys(eps);
+      const anyUnfinished = epNums.some((e) => !eps[e].done);
+      const lastWatched = Math.max(...epNums.map((e) => eps[e].watchedAt || 0));
+      out.push({
+        catId,
+        cover: root.covers[catId] || null,
+        meta: root.meta[catId] || null,
+        episodes: eps,
+        anyUnfinished,
+        lastWatched
+      });
+    }
+    return out.sort((a2, b2) => b2.lastWatched - a2.lastWatched);
+  }
+  function getSettings() {
+    return loadRoot().settings;
+  }
+  function setSettings(patch) {
+    const root = loadRoot();
+    root.settings = { ...root.settings, ...patch };
+    saveRoot(root);
+  }
+  function clearAnime(catId) {
+    const root = loadRoot();
+    delete root.covers[catId];
+    delete root.watch[catId];
+    delete root.meta[catId];
+    saveRoot(root);
+  }
+  function exportAll() {
+    return JSON.stringify(loadRoot(), null, 2);
+  }
+  function importAll(jsonText, { merge = true } = {}) {
+    const incoming = JSON.parse(jsonText);
+    if (!merge) {
+      saveRoot({
+        covers: incoming.covers || {},
+        watch: incoming.watch || {},
+        meta: incoming.meta || {},
+        settings: { ...DEFAULT_SETTINGS, ...incoming.settings || {} }
+      });
+      return;
+    }
+    const root = loadRoot();
+    saveRoot({
+      covers: { ...root.covers, ...incoming.covers || {} },
+      watch: { ...root.watch, ...incoming.watch || {} },
+      meta: { ...root.meta, ...incoming.meta || {} },
+      settings: { ...root.settings, ...incoming.settings || {} }
+    });
   }
 
   // node_modules/opencc-js/dist/esm/full.js
@@ -389,136 +519,6 @@
     const h2 = Math.floor(sec / 3600);
     const pad = (n2) => String(n2).padStart(2, "0");
     return h2 > 0 ? `${h2}:${pad(m2)}:${pad(s2)}` : `${m2}:${pad(s2)}`;
-  }
-
-  // src/store.js
-  var ROOT_KEY = "a1p:data";
-  var DEFAULT_SETTINGS = {
-    autoNext: true,
-    // 看完自動下一集
-    autoNextThreshold: 0.9,
-    // 看完判定比例
-    resume: true,
-    // 續播
-    shortcuts: true,
-    // 鍵盤快捷鍵
-    seekSeconds: 5,
-    // 方向鍵快進/後退秒數
-    rememberRate: true,
-    // 記憶播放速度
-    listThumbs: true,
-    // 列表頁增強（封面/卡片）
-    gridView: true,
-    // 列表頁卡片檢視（false = 原始列表）
-    cardWidth: 250,
-    // 卡片最小寬度 px
-    sidebarOpen: false
-    // 右側欄展開（預設折疊）
-  };
-  function loadRoot() {
-    try {
-      const raw = GM_getValue(ROOT_KEY, "");
-      const obj = raw ? JSON.parse(raw) : {};
-      return {
-        covers: obj.covers || {},
-        // { [catId]: { subjectId, cover, name, name_cn, score, manual, ts } }
-        watch: obj.watch || {},
-        // { [catId]: { [ep]: { currentTime, duration, done, watchedAt } } }
-        meta: obj.meta || {},
-        // { [catId]: { title, maxEpSeen } }
-        settings: { ...DEFAULT_SETTINGS, ...obj.settings || {} }
-      };
-    } catch {
-      return { covers: {}, watch: {}, meta: {}, settings: { ...DEFAULT_SETTINGS } };
-    }
-  }
-  function saveRoot(root) {
-    GM_setValue(ROOT_KEY, JSON.stringify(root));
-  }
-  function getCover(catId) {
-    return loadRoot().covers[catId] || null;
-  }
-  function setCover(catId, data) {
-    const root = loadRoot();
-    root.covers[catId] = { ...data, ts: Date.now() };
-    saveRoot(root);
-  }
-  function getAnimeWatch(catId) {
-    return loadRoot().watch[catId] || {};
-  }
-  function getEpisode(catId, ep) {
-    return (loadRoot().watch[catId] || {})[ep] || null;
-  }
-  function setEpisodeProgress(catId, ep, data) {
-    const root = loadRoot();
-    root.watch[catId] = root.watch[catId] || {};
-    const prev = root.watch[catId][ep] || {};
-    root.watch[catId][ep] = { ...prev, ...data, watchedAt: Date.now() };
-    saveRoot(root);
-  }
-  function setMeta(catId, data) {
-    const root = loadRoot();
-    root.meta[catId] = { ...root.meta[catId] || {}, ...data };
-    saveRoot(root);
-  }
-  function getMeta(catId) {
-    return loadRoot().meta[catId] || null;
-  }
-  function getInProgressList() {
-    const root = loadRoot();
-    const out = [];
-    for (const catId of Object.keys(root.watch)) {
-      const eps = root.watch[catId];
-      const epNums = Object.keys(eps);
-      const anyUnfinished = epNums.some((e) => !eps[e].done);
-      const lastWatched = Math.max(...epNums.map((e) => eps[e].watchedAt || 0));
-      out.push({
-        catId,
-        cover: root.covers[catId] || null,
-        meta: root.meta[catId] || null,
-        episodes: eps,
-        anyUnfinished,
-        lastWatched
-      });
-    }
-    return out.sort((a2, b2) => b2.lastWatched - a2.lastWatched);
-  }
-  function getSettings() {
-    return loadRoot().settings;
-  }
-  function setSettings(patch) {
-    const root = loadRoot();
-    root.settings = { ...root.settings, ...patch };
-    saveRoot(root);
-  }
-  function clearAnime(catId) {
-    const root = loadRoot();
-    delete root.covers[catId];
-    delete root.watch[catId];
-    delete root.meta[catId];
-    saveRoot(root);
-  }
-  function exportAll() {
-    return JSON.stringify(loadRoot(), null, 2);
-  }
-  function importAll(jsonText, { merge = true } = {}) {
-    const incoming = JSON.parse(jsonText);
-    if (!merge) {
-      saveRoot({
-        covers: incoming.covers || {},
-        watch: incoming.watch || {},
-        meta: incoming.meta || {},
-        settings: { ...DEFAULT_SETTINGS, ...incoming.settings || {} }
-      });
-      return;
-    }
-    const root = loadRoot();
-    saveRoot({
-      covers: { ...root.covers, ...incoming.covers || {} },
-      watch: { ...root.watch, ...incoming.watch || {} },
-      meta: { ...root.meta, ...incoming.meta || {} },
-      settings: { ...root.settings, ...incoming.settings || {} }
-    });
   }
 
   // src/ui.js
@@ -1361,9 +1361,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
   async function searchAnime(keyword, limit = 10) {
     if (!keyword || !keyword.trim()) return [];
-    const variants = [keyword];
     const simp = toSimplified(keyword);
-    if (simp !== keyword) variants.push(simp);
+    const variants = simp !== keyword ? [simp, keyword] : [keyword];
     for (const kw of variants) {
       const res = await searchOnce(kw, limit);
       if (res.length) return res;
@@ -1892,12 +1891,6 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     });
   }
   function main() {
-    try {
-      const ver = typeof GM_info !== "undefined" && GM_info.script ? GM_info.script.version : "?";
-      console.log(`[anime1-plus] v${ver} opencc 自測 輪迴的花瓣 → ${toSimplified("輪迴的花瓣")}`);
-    } catch (e) {
-      console.warn("[anime1-plus] opencc 自測失敗", e);
-    }
     injectStyles();
     mountTrackingPanel();
     mountSidebarToggle();

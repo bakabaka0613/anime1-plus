@@ -68,10 +68,9 @@ async function searchOnce(keyword, limit) {
 
 export async function searchAnime(keyword, limit = 10) {
   if (!keyword || !keyword.trim()) return [];
-  // anime1 多為繁體、Bangumi 索引多為簡體 → 同時試原文與簡體，先有結果者勝
-  const variants = [keyword];
+  // Bangumi 索引多為簡體，繁體原文常搜出雜項 → 簡體優先，沒結果才退回繁體原文
   const simp = toSimplified(keyword);
-  if (simp !== keyword) variants.push(simp);
+  const variants = simp !== keyword ? [simp, keyword] : [keyword];
   for (const kw of variants) {
     const res = await searchOnce(kw, limit);
     if (res.length) return res;
