@@ -302,8 +302,19 @@ export function collapseToSinglePlayer(animeKey) {
 
   const select = (i) => {
     eps.forEach((e, j) => {
-      e.article.classList.toggle('a1p-ep-hidden', j !== i);
+      const hide = j !== i;
+      e.article.classList.toggle('a1p-ep-hidden', hide);
       e.btn.classList.toggle('a1p-ep-active', j === i);
+      if (hide) {
+        const v = e.article.querySelector('video');
+        if (v && !v.paused) {
+          try {
+            v.pause(); // 切走的集暫停，避免背景播放
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     });
     window.dispatchEvent(new Event('resize')); // 讓 video.js 重算尺寸
   };

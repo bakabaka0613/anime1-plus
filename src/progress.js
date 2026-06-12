@@ -14,10 +14,12 @@ function computeDone(cur, dur, threshold) {
   return dur > 60 && cur >= MIN_DONE_SEC && cur / dur >= (threshold || DONE_RATIO);
 }
 
-// 目前該操作的播放器：優先正在播放，其次有進度，最後第一個
+// 目前該操作的播放器：先限定可見的（排除折疊隱藏的集），再優先播放中 > 有進度 > 第一個
 function activeVideo() {
   const vids = Array.from(document.querySelectorAll('video'));
-  return vids.find((v) => !v.paused) || vids.find((v) => v.currentTime > 0) || vids[0] || null;
+  const visible = vids.filter((v) => v.getClientRects().length > 0); // display:none 的隱藏集 → 0
+  const pool = visible.length ? visible : vids;
+  return pool.find((v) => !v.paused) || pool.find((v) => v.currentTime > 0) || pool[0] || null;
 }
 
 // ---- 方向鍵快進/後退（秒數可調，分類頁與單集頁共用）----

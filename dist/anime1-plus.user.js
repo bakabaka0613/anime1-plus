@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.2
+// @version      0.4.3
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -665,8 +665,18 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     bar.appendChild(label);
     const select = (i) => {
       eps.forEach((e, j) => {
-        e.article.classList.toggle("a1p-ep-hidden", j !== i);
+        const hide = j !== i;
+        e.article.classList.toggle("a1p-ep-hidden", hide);
         e.btn.classList.toggle("a1p-ep-active", j === i);
+        if (hide) {
+          const v = e.article.querySelector("video");
+          if (v && !v.paused) {
+            try {
+              v.pause();
+            } catch {
+            }
+          }
+        }
       });
       window.dispatchEvent(new Event("resize"));
     };
@@ -794,7 +804,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
   function activeVideo() {
     const vids = Array.from(document.querySelectorAll("video"));
-    return vids.find((v) => !v.paused) || vids.find((v) => v.currentTime > 0) || vids[0] || null;
+    const visible = vids.filter((v) => v.getClientRects().length > 0);
+    const pool = visible.length ? visible : vids;
+    return pool.find((v) => !v.paused) || pool.find((v) => v.currentTime > 0) || pool[0] || null;
   }
   var seekHotkeyBound = false;
   function setupSeekHotkey() {
