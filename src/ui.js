@@ -134,12 +134,18 @@ body.a1p-webfull-lock{overflow:hidden!important}
 body.a1p-webfull-lock .a1p-sidebar-toggle,
 body.a1p-webfull-lock .a1p-fab,
 body.a1p-webfull-lock .a1p-panel{display:none!important}
-.a1p-webfull-btn{position:absolute;top:10px;right:10px;z-index:10;width:44px;height:44px;
-  border:2px solid #fff;border-radius:8px;background:#000b;color:#fff;font-size:24px;cursor:pointer;line-height:1;
-  display:flex;align-items:center;justify-content:center;opacity:1;
-  box-shadow:0 2px 8px #000a;transition:background .15s,opacity .25s,visibility .25s,transform .15s}
-.a1p-webfull-btn:hover{background:#7aa2f7;border-color:#7aa2f7;color:#0b1020;transform:scale(1.08)}
-.a1p-webfull .a1p-webfull-btn{top:16px;right:16px}
+.a1p-webfull-btn{position:absolute!important;top:10px!important;right:10px!important;z-index:2147483000!important;
+  width:44px!important;height:44px!important;min-width:44px!important;min-height:44px!important;
+  border:2px solid #fff!important;border-radius:8px!important;background:#000c!important;color:#fff!important;
+  font-size:24px!important;cursor:pointer!important;line-height:1!important;opacity:1!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  box-shadow:0 2px 8px #000a!important;text-shadow:none!important;outline:none!important;
+  transition:background .15s,transform .15s,opacity .25s,visibility .25s!important}
+.a1p-webfull-btn:focus,.a1p-webfull-btn:focus-visible{outline:none!important;box-shadow:0 2px 8px #000a!important}
+.a1p-webfull-btn:hover{background:#fff!important;border-color:#fff!important;color:#000!important;transform:scale(1.08)!important}
+.a1p-webfull .a1p-webfull-btn{top:16px!important;right:16px!important}
+/* 播放中且使用者閒置時跟 video.js 控制列一起淡出（一般與網頁全屏皆適用）；滑鼠移入播放器才顯示 */
+.video-js.vjs-has-started.vjs-playing.vjs-user-inactive .a1p-webfull-btn{opacity:0!important;visibility:hidden!important;pointer-events:none!important}
 /* 分類頁：上方選集、下方單一播放器（隱藏其餘集的 article）*/
 .a1p-ep-selector{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0;padding:10px 12px;
   background:#1b1b1f;border:1px solid #2a2a30;border-radius:8px}
