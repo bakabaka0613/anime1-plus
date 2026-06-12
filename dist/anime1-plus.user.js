@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.13
+// @version      0.6.14
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -737,10 +737,15 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
 .a1p-poster{display:none} /* 原始列表模式：封面隱藏 */
 /* 懸浮工具列：搜尋 + 卡片/列表切換 + 大小調整 */
 .a1p-toolbar{display:flex;gap:10px;align-items:center;
-  flex-wrap:wrap;padding:8px 12px;margin:0 0 14px;background:#0d0d10ee;backdrop-filter:blur(6px);
+  flex-wrap:wrap;padding:8px 12px;margin:0 auto 14px;max-width:1152px;background:#0d0d10ee;backdrop-filter:blur(6px);
   border:1px solid #2a2a30;border-radius:8px}
-.a1p-toolbar.a1p-toolbar-fixed{position:fixed;top:0;left:0;right:0;z-index:2147483600;
-  margin:0;border-radius:0;border-left:none;border-right:none}
+/* 吸頂時保留原本尺寸與留白：頂部留間距、沿用圓角/邊框（不貼滿）。
+   left/width 由 setupStickyToolbar 量測 spacer 後以 inline style 設定，確保與靜止狀態完全對齊。*/
+.a1p-toolbar.a1p-toolbar-fixed{position:fixed;top:12px;right:auto;margin:0;z-index:2147483600;
+  box-shadow:0 6px 24px #0009}
+/* 吸頂時的頂部漸層遮罩：實心蓋頂端間距＋工具列後方，下緣淡出顯露內容（高度/漸層由 JS 設定）*/
+.a1p-toolbar-mask{position:fixed;top:0;left:0;right:0;z-index:2147483599;pointer-events:none;display:none}
+.a1p-toolbar-mask.on{display:block}
 .a1p-toolbar>*{align-self:center}
 .a1p-tb-search{flex:1 1 200px;min-width:160px;display:flex;align-items:center}
 .a1p-tb-input{width:100%;height:32px;box-sizing:border-box;background:#1b1b1f;border:1px solid #45464c;
@@ -751,6 +756,8 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
 .a1p-tb-btn:hover{background:#303138}
 .a1p-tb-size{display:flex;align-items:center;gap:6px;height:32px;font-size:12px;color:#9aa0a6;white-space:nowrap}
 body:not(.a1p-grid-on) .a1p-tb-size{display:none} /* 原始列表模式不需大小調整 */
+/* 窄螢幕：搜尋框獨佔一行，卡片大小滑條與「原始列表」按鈕換到第二行並靠右，避免擠壓 */
+@media (max-width:640px){.a1p-tb-search{flex-basis:100%}.a1p-toolbar{justify-content:flex-end}}
 body.a1p-grid-on .a1p-grid-table thead{display:none}
 body.a1p-grid-on .a1p-grid-table{margin-top:8px!important}
 body.a1p-grid-on .dataTables_paginate,body.a1p-grid-on .dataTables_info,
@@ -777,6 +784,13 @@ body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#
 body.a1p-sidebar-collapsed #secondary,body.a1p-sidebar-collapsed .widget-area{display:none!important}
 body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
   width:100%!important;max-width:100%!important;flex:1 1 100%!important;float:none!important}
+/* footer 置底（僅首頁 /）：內容不足一屏（如搜尋無結果）時把 #colophon 推到視窗底，消除底端大片空白。
+   只改 #page 直接子層的排版，內部 float 兩欄佈局不受影響；其他頁面（分類/單集）維持原樣。*/
+body.a1p-list-page #page.site{display:flex;flex-direction:column;min-height:100vh}
+/* width:100% 保住原本的滿版置中：site-content 帶 margin:auto，成為 flex 子項後
+   auto margin 會讓它收縮到內容寬度（無結果/廣告未載入時版型變窄）→ 用明確寬度抵銷，仍受 max-width 限制。*/
+body.a1p-list-page #page.site>#content{flex:1 0 auto;width:100%}
+body.a1p-list-page #page.site>#colophon{flex-shrink:0;margin-top:auto}
 .a1p-last{display:flex;align-items:center;gap:10px;margin:8px 0;padding:8px 12px;
   background:#15233a;border:1px solid #2c4a6e;border-radius:8px;color:#d6e4ff;font-size:14px}
 .a1p-last b{color:#fff}
@@ -2108,19 +2122,39 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     setupStickyToolbar(bar);
   }
   function setupStickyToolbar(bar) {
+    const MAX_W = 1152;
+    const FADE = 26;
     const spacer = document.createElement("div");
     bar.parentNode.insertBefore(spacer, bar);
+    const mask = document.createElement("div");
+    mask.className = "a1p-toolbar-mask";
+    document.body.appendChild(mask);
     let fixed = false;
+    const applyGeom = () => {
+      const r = spacer.getBoundingClientRect();
+      const w = Math.min(r.width, MAX_W);
+      bar.style.width = `${w}px`;
+      bar.style.left = `${r.left + (r.width - w) / 2}px`;
+      const solid = Math.ceil(bar.getBoundingClientRect().bottom);
+      mask.style.height = `${solid + FADE}px`;
+      mask.style.background = `linear-gradient(to bottom,#0d0d10 0,#0d0d10 ${solid}px,transparent ${solid + FADE}px)`;
+    };
     const update = () => {
       const top = spacer.getBoundingClientRect().top;
       if (!fixed && top < 0) {
         spacer.style.height = `${bar.offsetHeight}px`;
         bar.classList.add("a1p-toolbar-fixed");
+        mask.classList.add("on");
+        applyGeom();
         fixed = true;
       } else if (fixed && top >= 0) {
         spacer.style.height = "0";
         bar.classList.remove("a1p-toolbar-fixed");
+        mask.classList.remove("on");
+        bar.style.left = bar.style.width = "";
         fixed = false;
+      } else if (fixed) {
+        applyGeom();
       }
     };
     window.addEventListener("scroll", update, { passive: true });
@@ -2495,6 +2529,7 @@ ${menu}`, "");
     if (type === "category") initCategoryPage();
     else if (type === "episode") initEpisodePageRoute();
     else if (type === "list") {
+      document.body.classList.add("a1p-list-page");
       if (getSettings().listThumbs) initListPage();
     }
     registerMenu();

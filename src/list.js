@@ -313,19 +313,43 @@ function mountToolbar() {
 // position:sticky 在 anime1 的 float 佈局（容器常有 overflow:hidden）會失效，
 // 改用捲動超過原位時切到 position:fixed 的後備做法；spacer 佔位避免內容跳動。
 function setupStickyToolbar(bar) {
+  const MAX_W = 1152; // 與 .a1p-toolbar 的 max-width 一致
+  const FADE = 26; // 工具列下緣往下的漸層淡出距離
   const spacer = document.createElement('div');
   bar.parentNode.insertBefore(spacer, bar);
+  // 全寬頂部遮罩：實心蓋住頂端間距＋工具列後方（順帶讓半透明工具列不透出卡片），
+  // 工具列下緣往下漸層淡出顯露內容。色用工具列自身深色，亮/暗模式皆一致。
+  const mask = document.createElement('div');
+  mask.className = 'a1p-toolbar-mask';
+  document.body.appendChild(mask);
   let fixed = false;
+  // 吸頂時用 spacer（佔位元素）的幾何，把寬度/水平位置設成與靜止狀態（max-width 置中）完全一致，
+  // 避免兩種定位基準（viewport vs content-area）在不同視窗寬度下對不齊。
+  const applyGeom = () => {
+    const r = spacer.getBoundingClientRect();
+    const w = Math.min(r.width, MAX_W);
+    bar.style.width = `${w}px`;
+    bar.style.left = `${r.left + (r.width - w) / 2}px`;
+    const solid = Math.ceil(bar.getBoundingClientRect().bottom);
+    mask.style.height = `${solid + FADE}px`;
+    mask.style.background = `linear-gradient(to bottom,#0d0d10 0,#0d0d10 ${solid}px,transparent ${solid + FADE}px)`;
+  };
   const update = () => {
     const top = spacer.getBoundingClientRect().top;
     if (!fixed && top < 0) {
       spacer.style.height = `${bar.offsetHeight}px`;
       bar.classList.add('a1p-toolbar-fixed');
+      mask.classList.add('on');
+      applyGeom();
       fixed = true;
     } else if (fixed && top >= 0) {
       spacer.style.height = '0';
       bar.classList.remove('a1p-toolbar-fixed');
+      mask.classList.remove('on');
+      bar.style.left = bar.style.width = '';
       fixed = false;
+    } else if (fixed) {
+      applyGeom(); // 捲動/縮放期間持續對齊（捲軸出現或縮放會改變橫向幾何）
     }
   };
   window.addEventListener('scroll', update, { passive: true });

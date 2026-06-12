@@ -204,6 +204,7 @@ function main() {
   if (type === 'category') initCategoryPage();
   else if (type === 'episode') initEpisodePageRoute();
   else if (type === 'list') {
+    document.body.classList.add('a1p-list-page'); // 只在首頁 / 啟用 footer 置底樣式
     if (getSettings().listThumbs) initListPage();
   }
 
