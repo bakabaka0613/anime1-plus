@@ -1,5 +1,6 @@
 // Bangumi (bgm.tv) 搜尋封裝。透過 GM_xmlhttpRequest 跨域，避開 CORS。
 /* global GM_xmlhttpRequest */
+import { toSimplified } from './util.js';
 
 const UA = 'anime1-plus/0.1 (https://github.com/bakabaka0613/anime1-plus)';
 
@@ -52,8 +53,7 @@ async function searchLegacy(keyword, limit) {
  * 搜尋動畫。先試 v0，失敗再退回舊 API。回傳正規化 subject 陣列。
  * subject: { id, name, name_cn, date, images:{large,common,medium,grid} }
  */
-export async function searchAnime(keyword, limit = 10) {
-  if (!keyword || !keyword.trim()) return [];
+async function searchOnce(keyword, limit) {
   try {
     return await searchV0(keyword, limit);
   } catch (e) {
@@ -64,6 +64,19 @@ export async function searchAnime(keyword, limit = 10) {
       return [];
     }
   }
+}
+
+export async function searchAnime(keyword, limit = 10) {
+  if (!keyword || !keyword.trim()) return [];
+  // anime1 多為繁體、Bangumi 索引多為簡體 → 同時試原文與簡體，先有結果者勝
+  const variants = [keyword];
+  const simp = toSimplified(keyword);
+  if (simp !== keyword) variants.push(simp);
+  for (const kw of variants) {
+    const res = await searchOnce(kw, limit);
+    if (res.length) return res;
+  }
+  return [];
 }
 
 // 取某條目的所有名稱別名（infobox 的「别名/中文名/英文名」+ name/name_cn），供深度匹配
