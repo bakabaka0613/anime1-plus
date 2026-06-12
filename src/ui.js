@@ -45,7 +45,8 @@ export function injectStyles() {
   border-radius:6px;color:#e8e8ea;padding:8px;font-size:12px;font-family:monospace;resize:vertical}
 .a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
-  background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
+  background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 .a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:370px;max-height:60vh;overflow:auto;
   background:#1b1b1f;border:1px solid #33343a;border-radius:10px;color:#e8e8ea;font-size:13px;padding:10px}
 .a1p-panel h4{margin:2px 0 8px;font-size:14px}
@@ -475,24 +476,55 @@ export function mountTrackingPanel() {
   const fab = document.createElement('button');
   fab.className = 'a1p-fab';
   fab.textContent = '📺';
-  fab.title = '追番清單';
+  fab.title = '追番清單（Shift+點擊 或 長按 3 秒 → 管理模式）';
   document.body.appendChild(fab);
 
   const panel = document.createElement('div');
   panel.className = 'a1p-panel a1p-hide';
   document.body.appendChild(panel);
 
+  let pressTimer = null;
+  let longPressed = false; // 長按已開啟管理模式 → 抑制隨後的 click
   fab.onclick = (e) => {
+    if (longPressed) {
+      longPressed = false;
+      return; // 長按已處理開啟，忽略這次 click
+    }
     const willOpen = panel.classList.contains('a1p-hide');
     panel.classList.toggle('a1p-hide');
     if (willOpen) {
-      // 按住 Shift 開啟 → 進入刪除模式，每列右側出現刪除鈕
+      // 按住 Shift 開啟 → 進入管理模式，每列右側出現 ✓/🗑 鈕
       panel.classList.toggle('a1p-del-mode', e.shiftKey);
       renderPanel(panel);
     } else {
       preview.style.display = 'none'; // 收合面板時一併隱藏封面預覽
     }
   };
+
+  // 長按 📺 三秒 → 與 Shift+點擊 等效，開啟管理模式（給無實體鍵盤/觸控裝置用）
+  const cancelPress = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  };
+  fab.addEventListener('pointerdown', () => {
+    longPressed = false;
+    cancelPress();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      longPressed = true;
+      panel.classList.remove('a1p-hide');
+      panel.classList.add('a1p-del-mode');
+      preview.style.display = 'none';
+      renderPanel(panel);
+    }, 3000);
+  });
+  fab.addEventListener('pointerup', cancelPress);
+  fab.addEventListener('pointerleave', cancelPress);
+  fab.addEventListener('pointercancel', cancelPress);
+  // 長按時瀏覽器可能跳出右鍵/長按選單，於開啟管理模式期間抑制
+  fab.addEventListener('contextmenu', (e) => e.preventDefault());
 
   // 封面 hover 放大預覽：滑鼠移到列的小封面上時，於面板左側浮出大圖（委派以撐過 innerHTML 重繪）
   const preview = document.createElement('img');

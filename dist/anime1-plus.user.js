@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.2
+// @version      0.6.4
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -601,8 +601,14 @@
       const map = {};
       for (const r of rows) {
         if (!Array.isArray(r) || r[0] == null) continue;
-        const ep = parseLatestEp(String(r[2]));
-        if (ep != null) map[`cat:${r[0]}`] = { ep, airing: isAiring(String(r[2])) };
+        const epText = String(r[2]);
+        map[`cat:${r[0]}`] = {
+          ep: parseLatestEp(epText),
+          // 無一般集數 → null（renderPanel 視同無更新）
+          airing: isAiring(epText),
+          name: r[1] != null ? String(r[1]).trim() : "",
+          year: r[3] != null ? String(r[3]) : null
+        };
       }
       cache = map;
       cacheAt = now;
@@ -653,7 +659,8 @@
   border-radius:6px;color:#e8e8ea;padding:8px;font-size:12px;font-family:monospace;resize:vertical}
 .a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
-  background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
+  background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006;
+  user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
 .a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:370px;max-height:60vh;overflow:auto;
   background:#1b1b1f;border:1px solid #33343a;border-radius:10px;color:#e8e8ea;font-size:13px;padding:10px}
 .a1p-panel h4{margin:2px 0 8px;font-size:14px}
@@ -1046,12 +1053,18 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const fab = document.createElement("button");
     fab.className = "a1p-fab";
     fab.textContent = "📺";
-    fab.title = "追番清單";
+    fab.title = "追番清單（Shift+點擊 或 長按 3 秒 → 管理模式）";
     document.body.appendChild(fab);
     const panel = document.createElement("div");
     panel.className = "a1p-panel a1p-hide";
     document.body.appendChild(panel);
+    let pressTimer = null;
+    let longPressed = false;
     fab.onclick = (e) => {
+      if (longPressed) {
+        longPressed = false;
+        return;
+      }
       const willOpen = panel.classList.contains("a1p-hide");
       panel.classList.toggle("a1p-hide");
       if (willOpen) {
@@ -1061,6 +1074,28 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         preview.style.display = "none";
       }
     };
+    const cancelPress = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    fab.addEventListener("pointerdown", () => {
+      longPressed = false;
+      cancelPress();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        longPressed = true;
+        panel.classList.remove("a1p-hide");
+        panel.classList.add("a1p-del-mode");
+        preview.style.display = "none";
+        renderPanel(panel);
+      }, 3e3);
+    });
+    fab.addEventListener("pointerup", cancelPress);
+    fab.addEventListener("pointerleave", cancelPress);
+    fab.addEventListener("pointercancel", cancelPress);
+    fab.addEventListener("contextmenu", (e) => e.preventDefault());
     const preview = document.createElement("img");
     preview.className = "a1p-cover-preview";
     preview.referrerPolicy = "no-referrer";
@@ -1840,7 +1875,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     injectStyles();
     const seen = /* @__PURE__ */ new WeakSet();
     const queue = [];
+    const bgQueue = [];
     let pumping = false;
+    let trackingPrefetched = false;
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
@@ -1857,8 +1894,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     async function pump() {
       if (pumping) return;
       pumping = true;
-      while (queue.length) {
-        const job = queue.shift();
+      while (queue.length || bgQueue.length) {
+        const job = queue.length ? queue.shift() : bgQueue.shift();
         let ok = false;
         try {
           ok = await resolve(job);
@@ -1867,27 +1904,29 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         }
         if (!ok) {
           job.retries = (job.retries || 0) + 1;
-          if (job.retries <= MAX_RETRIES) queue.push(job);
-          else job.img.classList.add("a1p-thumb-unknown");
+          if (job.retries <= MAX_RETRIES) (job.prefetch ? bgQueue : queue).push(job);
+          else if (job.img) job.img.classList.add("a1p-thumb-unknown");
         }
         await sleep(REQUEST_GAP_MS);
       }
       pumping = false;
     }
     async function resolve({ img, key, name, year }) {
+      const paint = (data) => {
+        if (!img) return;
+        img.src = data.cover || "";
+        markCover(img, data);
+        markRating(img, data);
+      };
       const res = await lookupCover({ animeKey: key, title: name, year });
       if (res.cached) {
-        img.src = res.data.cover || "";
-        markCover(img, res.data);
-        markRating(img, res.data);
+        paint(res.data);
         return true;
       }
       if (res.data) {
         const data = { ...res.data, local: name };
         setCover(key, data);
-        img.src = data.cover || "";
-        markCover(img, data);
-        markRating(img, data);
+        paint(data);
         return true;
       }
       const top = res.ranked && res.ranked[0];
@@ -1897,13 +1936,25 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           data.tentative = true;
           data.local = name;
           setCover(key, data);
-          img.src = data.cover;
-          markCover(img, data);
-          markRating(img, data);
+          paint(data);
         }
         return true;
       }
       return false;
+    }
+    async function prefetchTrackingCovers() {
+      if (trackingPrefetched) return;
+      trackingPrefetched = true;
+      const need = getInProgressList().filter((x) => !(x.cover && x.cover.cover));
+      if (!need.length) return;
+      const infoMap = await fetchLatestEpMap();
+      for (const x of need) {
+        const info = infoMap[x.catId];
+        const name = info && info.name || x.meta && x.meta.title;
+        if (!name) continue;
+        bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
+      }
+      pump();
     }
     function enhanceRow(tr) {
       if (seen.has(tr)) return;
@@ -1960,6 +2011,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     new MutationObserver(scanTable).observe(document.body, { childList: true, subtree: true });
     mountToolbar();
     setupInfiniteScroll();
+    prefetchTrackingCovers();
   }
   function mountToolbar() {
     if (document.querySelector(".a1p-toolbar")) return;

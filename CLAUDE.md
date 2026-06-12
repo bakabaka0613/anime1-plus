@@ -34,6 +34,11 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 ## Conventions & gotchas
 
 - **Anime key = stable `categoryID`** — category page / single-episode page / list page all share one record.
+- Covers are NOT synced (only watch+meta are), so a freshly-synced device has cover-less tracking rows.
+  `list.js` fixes this: after the visible poster queue drains it prefetches covers for tracking-list anime
+  lacking one, via a low-priority `bgQueue` (visible posters always win). Titles/years come from
+  `fetchLatestEpMap` (now carries `name`/`year`), falling back to `meta.title`. Self-limiting — once cached,
+  `getInProgressList` no longer reports them as missing.
 - Inline player on the **category page** is the real watch flow: identify episode via the player's
   `data-apireq`; single-episode page `/{postId}` also supported. Non-native `<video>` → silently skip
   progress (don't error).

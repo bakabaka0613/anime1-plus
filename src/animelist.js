@@ -8,9 +8,9 @@ let cache = null;
 let cacheAt = 0;
 
 /**
- * 回傳 { [animeKey]: { ep, airing } }，animeKey 形如 "cat:1846"，ep 為最新一般集數、
- * airing 表首頁是否標示「連載中」。解析失敗或無一般集數（劇場版/OVA 等）的條目略過。
- * 失敗時回退舊快取或空物件。
+ * 回傳 { [animeKey]: { ep, airing, name, year } }，animeKey 形如 "cat:1846"。
+ * ep 為最新一般集數（劇場版/OVA 等無一般集數者為 null）、airing 表首頁是否標「連載中」、
+ * name/year 為首頁清單的原始繁體名與年份（供追番清單補抓封面用）。失敗時回退舊快取或空物件。
  */
 export async function fetchLatestEpMap() {
   const now = Date.now();
@@ -21,9 +21,15 @@ export async function fetchLatestEpMap() {
     const rows = await res.json();
     const map = {};
     for (const r of rows) {
+      // 列格式：[catId, name, 集數欄, year, season, group]
       if (!Array.isArray(r) || r[0] == null) continue;
-      const ep = parseLatestEp(String(r[2]));
-      if (ep != null) map[`cat:${r[0]}`] = { ep, airing: isAiring(String(r[2])) };
+      const epText = String(r[2]);
+      map[`cat:${r[0]}`] = {
+        ep: parseLatestEp(epText), // 無一般集數 → null（renderPanel 視同無更新）
+        airing: isAiring(epText),
+        name: r[1] != null ? String(r[1]).trim() : '',
+        year: r[3] != null ? String(r[3]) : null,
+      };
     }
     cache = map;
     cacheAt = now;

@@ -1,9 +1,10 @@
 // 列表頁（/）：把 TablePress 表格重排成 PLEX 風格海報卡片網格（封面在上、標題/集數在下）。
 // 封面沿用 lazy + 限流 + 重試；DataTables 的搜尋/分頁在表格外，仍正常運作。
 import { animeKeyFromCategoryPath, yearFromText } from './dom.js';
-import { getCover, setCover, getAnimeWatch, getSettings, setSettings } from './store.js';
+import { getCover, setCover, getAnimeWatch, getInProgressList, getSettings, setSettings } from './store.js';
 import { lookupCover, toCoverData } from './cover.js';
 import { parseLatestEp, pendingNewEpisodes } from './util.js';
+import { fetchLatestEpMap } from './animelist.js';
 import { injectStyles } from './ui.js';
 
 const REQUEST_GAP_MS = 500; // 兩次 Bangumi 搜尋間隔，避免限流
@@ -69,8 +70,10 @@ function markRating(img, data) {
 export function initListPage() {
   injectStyles();
   const seen = new WeakSet();
-  const queue = [];
+  const queue = []; // 可見海報（高優先）
+  const bgQueue = []; // 追番清單補抓封面（低優先，僅在可見海報排空後處理）
   let pumping = false;
+  let trackingPrefetched = false;
 
   const io = new IntersectionObserver(
     (entries) => {
@@ -89,8 +92,8 @@ export function initListPage() {
   async function pump() {
     if (pumping) return;
     pumping = true;
-    while (queue.length) {
-      const job = queue.shift();
+    while (queue.length || bgQueue.length) {
+      const job = queue.length ? queue.shift() : bgQueue.shift(); // 可見海報永遠優先於補抓
       let ok = false;
       try {
         ok = await resolve(job);
@@ -99,29 +102,32 @@ export function initListPage() {
       }
       if (!ok) {
         job.retries = (job.retries || 0) + 1;
-        if (job.retries <= MAX_RETRIES) queue.push(job);
-        else job.img.classList.add('a1p-thumb-unknown');
+        if (job.retries <= MAX_RETRIES) (job.prefetch ? bgQueue : queue).push(job);
+        else if (job.img) job.img.classList.add('a1p-thumb-unknown');
       }
       await sleep(REQUEST_GAP_MS);
     }
     pumping = false;
   }
 
+  // job 可能無 img（追番清單補抓：只寫入封面快取，不渲染畫面）
   async function resolve({ img, key, name, year }) {
+    const paint = (data) => {
+      if (!img) return; // 補抓 job：略過畫面渲染
+      img.src = data.cover || '';
+      markCover(img, data);
+      markRating(img, data);
+    };
     const res = await lookupCover({ animeKey: key, title: name, year });
     if (res.cached) {
-      img.src = res.data.cover || '';
-      markCover(img, res.data);
-      markRating(img, res.data);
+      paint(res.data);
       return true;
     }
     if (res.data) {
       // 高信心：直接採用、無提示。帶上 anime1 列表的繁體原名（local）供追番清單顯示繁體。
       const data = { ...res.data, local: name };
       setCover(key, data);
-      img.src = data.cover || '';
-      markCover(img, data);
-      markRating(img, data);
+      paint(data);
       return true;
     }
     const top = res.ranked && res.ranked[0];
@@ -133,13 +139,28 @@ export function initListPage() {
         data.tentative = true;
         data.local = name; // anime1 繁體原名
         setCover(key, data);
-        img.src = data.cover;
-        markCover(img, data);
-        markRating(img, data);
+        paint(data);
       }
       return true;
     }
     return false; // 完全無可用封面 → 交給 retry，用完標 unknown 占位
+  }
+
+  // 追番清單中沒有封面的番（多端同步後新端常見：只同步進度、封面各端自抓）→
+  // 排進低優先 bgQueue，等可見海報抓完後接著補抓，下次開追番面板就有封面。
+  async function prefetchTrackingCovers() {
+    if (trackingPrefetched) return;
+    trackingPrefetched = true;
+    const need = getInProgressList().filter((x) => !(x.cover && x.cover.cover));
+    if (!need.length) return;
+    const infoMap = await fetchLatestEpMap(); // 取各番的繁體名/年份（封面查詢需要 title）
+    for (const x of need) {
+      const info = infoMap[x.catId];
+      const name = (info && info.name) || (x.meta && x.meta.title);
+      if (!name) continue; // 無名稱可查 → 略過（之後進該動畫頁時仍會抓）
+      bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
+    }
+    pump();
   }
 
   // 把單一 table row 變成卡片：在名稱格最前插入封面圖
@@ -209,6 +230,7 @@ export function initListPage() {
 
   mountToolbar();
   setupInfiniteScroll();
+  prefetchTrackingCovers(); // 可見海報抓完後接著補抓追番清單缺的封面（bgQueue 低優先，不擋可見列表）
 }
 
 // 懸浮工具列：搜尋（移入原生 filter）+ 卡片/列表切換 + 卡片大小
