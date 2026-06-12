@@ -115,7 +115,7 @@ function setupPlayPauseHotkey() {
   );
 }
 
-// ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
+// ---- 網頁全螢幕：把播放器容器放大填滿視窗（非系統全螢幕）----
 let webFullHotkeyBound = false;
 
 function webFullBox(video) {
@@ -151,7 +151,7 @@ function addWebFullButton(video) {
   const btn = document.createElement('button');
   btn.className = 'a1p-webfull-btn';
   btn.type = 'button';
-  btn.title = '網頁全屏 (W)';
+  btn.title = '網頁全螢幕 (W)';
   btn.textContent = '⛶';
   btn.addEventListener('click', (e) => {
     e.preventDefault();

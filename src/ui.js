@@ -140,7 +140,7 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
 .a1p-last{display:flex;align-items:center;gap:10px;margin:8px 0;padding:8px 12px;
   background:#15233a;border:1px solid #2c4a6e;border-radius:8px;color:#d6e4ff;font-size:14px}
 .a1p-last b{color:#fff}
-/* 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）*/
+/* 網頁全螢幕：把播放器容器放大填滿視窗（非系統全螢幕）*/
 .a1p-webfull{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;
   max-width:none!important;margin:0!important;padding:0!important;border-radius:0!important;
   background:#000!important;z-index:2147483600!important}
@@ -159,7 +159,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
 .a1p-webfull-btn:focus,.a1p-webfull-btn:focus-visible{outline:none!important;box-shadow:0 2px 8px #000a!important}
 .a1p-webfull-btn:hover{background:#fff!important;border-color:#fff!important;color:#000!important;transform:scale(1.08)!important}
 .a1p-webfull .a1p-webfull-btn{top:16px!important;right:16px!important}
-/* 播放中且使用者閒置時跟 video.js 控制列一起淡出（一般與網頁全屏皆適用）；滑鼠移入播放器才顯示 */
+/* 播放中且使用者閒置時跟 video.js 控制列一起淡出（一般與網頁全螢幕皆適用）；滑鼠移入播放器才顯示 */
 .video-js.vjs-has-started.vjs-playing.vjs-user-inactive .a1p-webfull-btn{opacity:0!important;visibility:hidden!important;pointer-events:none!important}
 /* 分類頁：上方選集、下方單一播放器（隱藏其餘集的 article）*/
 .a1p-ep-selector{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0;padding:10px 12px;
