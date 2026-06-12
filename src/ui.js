@@ -134,11 +134,12 @@ body.a1p-webfull-lock{overflow:hidden!important}
 body.a1p-webfull-lock .a1p-sidebar-toggle,
 body.a1p-webfull-lock .a1p-fab,
 body.a1p-webfull-lock .a1p-panel{display:none!important}
-.a1p-webfull-btn{position:absolute;top:8px;right:8px;z-index:10;width:34px;height:34px;border:none;
-  border-radius:6px;background:#000a;color:#fff;font-size:17px;cursor:pointer;line-height:1;
-  display:flex;align-items:center;justify-content:center;opacity:.65}
-.a1p-webfull-btn:hover{opacity:1;background:#000c}
-.a1p-webfull .a1p-webfull-btn{top:12px;right:12px}
+.a1p-webfull-btn{position:absolute;top:10px;right:10px;z-index:10;width:44px;height:44px;
+  border:2px solid #fff;border-radius:8px;background:#000b;color:#fff;font-size:24px;cursor:pointer;line-height:1;
+  display:flex;align-items:center;justify-content:center;opacity:1;
+  box-shadow:0 2px 8px #000a;transition:background .15s,opacity .25s,visibility .25s,transform .15s}
+.a1p-webfull-btn:hover{background:#7aa2f7;border-color:#7aa2f7;color:#0b1020;transform:scale(1.08)}
+.a1p-webfull .a1p-webfull-btn{top:16px;right:16px}
 /* 分類頁：上方選集、下方單一播放器（隱藏其餘集的 article）*/
 .a1p-ep-selector{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0;padding:10px 12px;
   background:#1b1b1f;border:1px solid #2a2a30;border-radius:8px}
