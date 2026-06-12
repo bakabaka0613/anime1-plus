@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS = {
   autoNextThreshold: 0.9, // 看完判定比例
   resume: true, // 續播
   shortcuts: true, // 鍵盤快捷鍵
-  seekSeconds: 10, // 方向鍵快進/後退秒數
+  seekSeconds: 5, // 方向鍵快進/後退秒數
   rememberRate: true, // 記憶播放速度
   listThumbs: true, // 列表頁增強（封面/卡片）
   gridView: true, // 列表頁卡片檢視（false = 原始列表）

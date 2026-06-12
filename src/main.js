@@ -101,8 +101,8 @@ function registerMenu() {
     downloadJson(exportAll(), `anime1-plus-${new Date().toISOString().slice(0, 10)}.json`),
   );
   GM_registerMenuCommand('匯入資料 (JSON)', importViaFile);
-  GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 10}s）`, () => {
-    const cur = getSettings().seekSeconds || 10;
+  GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
+    const cur = getSettings().seekSeconds || 5;
     const v = prompt('方向鍵快進/後退秒數（1–120）：', String(cur));
     if (v == null) return;
     const n = parseInt(v, 10);

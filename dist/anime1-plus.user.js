@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.3.8
+// @version      0.3.9
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -199,7 +199,7 @@
     // 續播
     shortcuts: true,
     // 鍵盤快捷鍵
-    seekSeconds: 10,
+    seekSeconds: 5,
     // 方向鍵快進/後退秒數
     rememberRate: true,
     // 記憶播放速度
@@ -722,7 +722,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        const sec = e.shiftKey ? 10 : Number(getSettings().seekSeconds) || 10;
+        const sec = e.shiftKey ? 10 : Number(getSettings().seekSeconds) || 5;
         const d = e.key === "ArrowLeft" ? -sec : sec;
         try {
           v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
@@ -1494,8 +1494,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       () => downloadJson(exportAll(), `anime1-plus-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`)
     );
     GM_registerMenuCommand("匯入資料 (JSON)", importViaFile);
-    GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 10}s）`, () => {
-      const cur = getSettings().seekSeconds || 10;
+    GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
+      const cur = getSettings().seekSeconds || 5;
       const v = prompt("方向鍵快進/後退秒數（1–120）：", String(cur));
       if (v == null) return;
       const n = parseInt(v, 10);
