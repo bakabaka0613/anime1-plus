@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.6
+// @version      0.6.11
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -768,9 +768,10 @@ body.a1p-grid-on .a1p-grid-table tbody td:first-child a{display:block;padding:6p
   font-weight:600;font-size:13px;line-height:1.3;text-decoration:none}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#7aa2f7}
 /* 右側欄折疊 */
-.a1p-sidebar-toggle{position:fixed;right:18px;top:78px;z-index:2147483600;cursor:pointer;
-  border:1px solid #45464c;background:#26272cdd;color:#e8e8ea;border-radius:6px;padding:6px 10px;
-  font-size:13px;backdrop-filter:blur(4px)}
+.a1p-sidebar-toggle{position:fixed;right:0;top:105px;z-index:2147483600;cursor:pointer;
+  border:1px solid #45464c;border-right:none;background:#26272cee;color:#e8e8ea;
+  border-radius:12px 0 0 12px;width:20px;height:56px;padding:0;font-size:15px;line-height:1;
+  display:flex;align-items:center;justify-content:center}
 .a1p-sidebar-toggle:hover{background:#303138}
 body.a1p-sidebar-collapsed #secondary,body.a1p-sidebar-collapsed .widget-area{display:none!important}
 body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
@@ -1061,7 +1062,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     btn.className = "a1p-sidebar-toggle";
     const apply = () => {
       document.body.classList.toggle("a1p-sidebar-collapsed", !open);
-      btn.textContent = open ? "✕ 隱藏側欄" : "☰ 顯示側欄";
+      btn.textContent = open ? "❯" : "❮";
+      btn.title = open ? "隱藏側欄" : "顯示側欄";
     };
     btn.onclick = () => {
       open = !open;
