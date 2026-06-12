@@ -1,6 +1,6 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
-import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, clearAnimeWatch } from './store.js';
-import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget } from './util.js';
+import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings, clearAnimeWatch, markAnimeWatched } from './store.js';
+import { formatTime, toTraditional, caughtUpNewEpisodes, resumeTarget, isCaughtUp } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { parseTitle } from './parse.js';
 
@@ -46,20 +46,29 @@ export function injectStyles() {
 .a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
   background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
-.a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:320px;max-height:60vh;overflow:auto;
+.a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:370px;max-height:60vh;overflow:auto;
   background:#1b1b1f;border:1px solid #33343a;border-radius:10px;color:#e8e8ea;font-size:13px;padding:10px}
 .a1p-panel h4{margin:2px 0 8px;font-size:14px}
 .a1p-row{display:flex;gap:8px;padding:6px 0;border-top:1px solid #2a2a30;align-items:center}
-.a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30}
+.a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30;cursor:zoom-in}
+/* 追番列封面 hover 放大預覽：浮在面板外（面板 overflow:auto 會裁切，故獨立貼 body 並 fixed 定位） */
+.a1p-cover-preview{position:fixed;z-index:2147483601;display:none;width:240px;height:338px;padding:4px;
+  background:#0b0b0d;border:1px solid #45464c;border-radius:8px;box-shadow:0 8px 28px #000a;
+  object-fit:contain;pointer-events:none}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
 .a1p-row .a1p-rname{font-weight:600}
 .a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
 .a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
   font-weight:700;line-height:1;padding:2px 6px;border-radius:99px;vertical-align:middle}
-.a1p-row-del{margin-left:auto;flex:none;border:1px solid #e0466e;background:transparent;color:#e0466e;
+.a1p-row-actions{margin-left:auto;flex:none;display:flex;flex-direction:column;gap:6px}
+.a1p-row-del{flex:none;border:1px solid #e0466e;background:transparent;color:#e0466e;
   cursor:pointer;border-radius:6px;width:28px;height:28px;font-size:15px;line-height:1;
   display:flex;align-items:center;justify-content:center}
 .a1p-row-del:hover{background:#e0466e;color:#fff}
+.a1p-row-done{flex:none;border:1px solid #7ee29a;background:transparent;color:#7ee29a;
+  cursor:pointer;border-radius:6px;width:28px;height:28px;font-size:15px;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+.a1p-row-done:hover{background:#1e3a24;color:#7ee29a}
 .a1p-panel-hint{margin:-4px 0 8px;font-size:11px;color:#e0466e}
 .a1p-hide{display:none!important}
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
@@ -480,42 +489,89 @@ export function mountTrackingPanel() {
       // 按住 Shift 開啟 → 進入刪除模式，每列右側出現刪除鈕
       panel.classList.toggle('a1p-del-mode', e.shiftKey);
       renderPanel(panel);
+    } else {
+      preview.style.display = 'none'; // 收合面板時一併隱藏封面預覽
     }
   };
 
-  // 刪除鈕（委派在 panel 上，撐過 innerHTML 重繪）：確認後清除該動畫進度並重繪
+  // 封面 hover 放大預覽：滑鼠移到列的小封面上時，於面板左側浮出大圖（委派以撐過 innerHTML 重繪）
+  const preview = document.createElement('img');
+  preview.className = 'a1p-cover-preview';
+  preview.referrerPolicy = 'no-referrer';
+  document.body.appendChild(preview);
+  const isRowThumb = (el) => el && el.tagName === 'IMG' && el.closest('.a1p-row') && !!el.getAttribute('src');
+  panel.addEventListener('mouseover', (e) => {
+    if (!isRowThumb(e.target)) return;
+    preview.src = e.target.src;
+    preview.style.display = 'block';
+    const pr = panel.getBoundingClientRect();
+    const ir = e.target.getBoundingClientRect();
+    const pw = preview.offsetWidth;
+    const ph = preview.offsetHeight;
+    let left = pr.left - pw - 10; // 預設貼在面板左側
+    if (left < 8) left = Math.min(pr.right + 10, window.innerWidth - pw - 8); // 左側空間不足 → 改放右側
+    let top = ir.top + ir.height / 2 - ph / 2; // 與縮圖垂直置中對齊
+    top = Math.max(8, Math.min(top, window.innerHeight - ph - 8)); // 夾在視窗內
+    preview.style.left = `${left}px`;
+    preview.style.top = `${top}px`;
+  });
+  panel.addEventListener('mouseout', (e) => {
+    if (isRowThumb(e.target)) preview.style.display = 'none';
+  });
+
+  // 管理鈕（委派在 panel 上，撐過 innerHTML 重繪）：✓ 標記已看完、🗑 刪除進度，動作後重繪
   panel.addEventListener('click', (e) => {
+    const done = e.target.closest('.a1p-row-done');
+    if (done) {
+      e.preventDefault();
+      e.stopPropagation();
+      const name = done.dataset.name || '這部動畫';
+      if (!confirm(`把「${name}」標記為已看完？會把已知的每一集都設為看完。`)) return;
+      markAnimeWatched(done.dataset.cat);
+      renderPanel(panel);
+      return;
+    }
     const del = e.target.closest('.a1p-row-del');
     if (!del) return;
     e.preventDefault();
     e.stopPropagation();
-    const catId = del.dataset.cat;
     const name = del.dataset.name || '這部動畫';
     if (!confirm(`確定刪除「${name}」的觀看進度？（保留封面快取）此動作無法復原。`)) return;
-    clearAnimeWatch(catId);
+    clearAnimeWatch(del.dataset.cat);
     renderPanel(panel);
   });
 }
 
 async function renderPanel(panel) {
   const delMode = panel.classList.contains('a1p-del-mode');
-  const head = `<h4>追番清單</h4>${delMode ? '<div class="a1p-panel-hint">刪除模式：點右側 🗑 刪除該動畫進度</div>' : ''}`;
+  const head = `<h4>追番清單</h4>${delMode ? '<div class="a1p-panel-hint">管理模式：✓ 標記已看完、🗑 刪除該動畫進度</div>' : ''}`;
   const list = getInProgressList(); // 含「當前記錄全看完」的，改顯示「看下一集」而非消失
   if (!list.length) {
     panel.innerHTML = `${head}<div class="a1p-sub">還沒有觀看記錄</div>`;
     return;
   }
-  // 先用現有資料即時渲染（依最後觀看排序），避免等待網路造成空白
+  // 先用現有資料即時渲染（newEps 未知，先依「有進度/終端」粗分區），避免等待網路造成空白
+  sortByGroup(list);
   panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
-  // 再抓即時最新集數：標出「已追平後又出新集」者並置頂，並帶上「連載中」狀態（供「已看完/已到最新進度」區分）
+  // 再抓即時最新集數：標出「已追平後又出新集」者，並帶上「連載中」狀態（供「已看完/已到最新進度」區分）
   const latestMap = await fetchLatestEpMap();
   for (const x of list) {
     const info = latestMap[x.catId];
     x.newEps = caughtUpNewEpisodes(info ? info.ep : null, x.episodes, x.meta && x.meta.maxEpSeen);
     x.airing = !!(info && info.airing);
   }
-  list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0)); // 穩定排序：有更新置頂，組內維持原序
+  sortByGroup(list);
   panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
+}
+
+// 分兩區：有進度（可繼續看/看下一集/看新集）置頂、已看完/已到最新進度在下方；
+// 各區內維持「最後觀看時間」由新到舊（getInProgressList 已給此序，stable sort 保留組內原序）。
+function sortByGroup(list) {
+  list.sort(
+    (a, b) =>
+      (isCaughtUp(a.episodes, a.meta && a.meta.episodes, a.newEps) ? 1 : 0) -
+      (isCaughtUp(b.episodes, b.meta && b.meta.episodes, b.newEps) ? 1 : 0),
+  );
 }
 
 function panelRowsHtml(list, delMode) {
@@ -568,13 +624,16 @@ function panelRowsHtml(list, delMode) {
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';
-      const del = delMode
-        ? `<button class="a1p-row-del" type="button" title="刪除此動畫進度" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">🗑</button>`
+      // 管理模式（Shift 開啟）：✓ 標記已看完（已是終端狀態者不顯示）＋ 🗑 刪除進度
+      const caughtUp = isCaughtUp(eps, x.meta && x.meta.episodes, x.newEps);
+      const actions = delMode
+        ? `<div class="a1p-row-actions">${caughtUp ? '' : `<button class="a1p-row-done" type="button" title="標記為已看完" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">✓</button>`}` +
+          `<button class="a1p-row-del" type="button" title="刪除此動畫進度" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">🗑</button></div>`
         : '';
       return `<div class="a1p-row${x.newEps ? ' a1p-row-new' : ''}">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
         <div><div class="a1p-rname">${escapeHtml(name)}${badge}</div>${link}</div>
-        ${del}
+        ${actions}
       </div>`;
     })
     .join('');

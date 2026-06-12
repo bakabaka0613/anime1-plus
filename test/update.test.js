@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring } from '../src/util.js';
+import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring, isCaughtUp, markEpisodesDone } from '../src/util.js';
 
 // ---- parseLatestEp：解析首頁「集數」欄 → 最新一般集數 ----
 test('連載中(N) 取括號內集數', () => {
@@ -139,4 +139,65 @@ test('回頭重看舊集且未看完 → 以最後動作為準，繼續看該舊
 
 test('無觀看記錄 → none', () => {
   assert.deepEqual(resumeTarget({}), { mode: 'none' });
+});
+
+// ---- isCaughtUp：追番面板分區判定（true=已看完/已到最新進度→下方區；false=有進度→置頂區）----
+test('有未看完的集（resume）→ 有進度（false）', () => {
+  const eps = { 1: ep(true, 100), 2: ep(false, 200, 120) };
+  assert.equal(isCaughtUp(eps, [], 0), false);
+});
+
+test('全看完、meta 有下一集可看 → 有進度（false）', () => {
+  const eps = { 1: ep(true, 100), 2: ep(true, 200) };
+  // 下一集為 3，meta.episodes 內有 ep:3 → 還能「看下一集」
+  assert.equal(isCaughtUp(eps, [{ ep: 3, url: 'u3' }], 0), false);
+});
+
+test('全看完、無下一集、但有新集（newEps>0）→ 有進度（false）', () => {
+  const eps = { 1: ep(true, 100), 2: ep(true, 200) };
+  assert.equal(isCaughtUp(eps, [], 2), false);
+});
+
+test('全看完、無下一集、無新集 → 終端狀態（true，已看完/已到最新進度）', () => {
+  const eps = { 1: ep(true, 100), 2: ep(true, 200) };
+  assert.equal(isCaughtUp(eps, [], 0), true);
+});
+
+test('newEps 為 undefined（尚未抓即時集數）視為無新集 → 終端（true）', () => {
+  const eps = { 1: ep(true, 100) };
+  assert.equal(isCaughtUp(eps, undefined, undefined), true);
+});
+
+// ---- markEpisodesDone：手動標記整部已看完（追番面板）----
+test('meta 全集清單 → 每一集都設 done，最大集 watchedAt 最大（resumeTarget 指最高集、無下一集）', () => {
+  const watch = { 1: ep(true, 100), 2: ep(false, 200, 300) };
+  const metaEps = [{ ep: 1 }, { ep: 2 }, { ep: 3 }];
+  const out = markEpisodesDone(watch, metaEps, 1000);
+  assert.deepEqual(Object.keys(out).sort(), ['1', '2', '3']);
+  assert.ok(out[1].done && out[2].done && out[3].done);
+  assert.ok(out[3].watchedAt > out[1].watchedAt); // 最大集最後看
+  // 標記後應落入已看完區（meta 全集都看完、無下一集）
+  assert.equal(isCaughtUp(out, metaEps, 0), true);
+});
+
+test('無 meta.episodes → 只把已觀看的集設 done', () => {
+  const watch = { 1: ep(true, 100), 3: ep(false, 200, 50) };
+  const out = markEpisodesDone(watch, undefined, 1000);
+  assert.deepEqual(Object.keys(out).sort(), ['1', '3']);
+  assert.ok(out[1].done && out[3].done);
+});
+
+test('保留原有 currentTime/duration 等欄位', () => {
+  const watch = { 2: { done: false, watchedAt: 5, currentTime: 600, duration: 1400 } };
+  const out = markEpisodesDone(watch, [{ ep: 2 }], 1000);
+  assert.equal(out[2].currentTime, 600);
+  assert.equal(out[2].duration, 1400);
+  assert.equal(out[2].done, true);
+});
+
+test('不改動輸入物件', () => {
+  const watch = { 1: ep(false, 100, 30) };
+  const copy = JSON.parse(JSON.stringify(watch));
+  markEpisodesDone(watch, [{ ep: 1 }, { ep: 2 }], 1000);
+  assert.deepEqual(watch, copy);
 });

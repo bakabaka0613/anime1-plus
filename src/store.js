@@ -1,6 +1,6 @@
 // 本機儲存封裝（Tampermonkey GM storage）。單一根物件，方便整包匯出/匯入。
 /* global GM_getValue, GM_setValue, GM_deleteValue */
-import { mergeSync } from './util.js';
+import { mergeSync, markEpisodesDone } from './util.js';
 
 const ROOT_KEY = 'a1p:data';
 // 同步設定（token / gistId 等）獨立存放，刻意不放進 ROOT_KEY，
@@ -124,6 +124,15 @@ export function clearAnime(catId) {
   delete root.covers[catId];
   delete root.watch[catId];
   delete root.meta[catId];
+  saveRoot(root);
+}
+
+// 手動把整部動畫標記為已看完：把已知的每一集（meta 全集 ∪ 已觀看）都設為 done。
+// 用於追番面板（在他處看完／不想再追），標記後該番落入「已看完/已到最新進度」區。
+export function markAnimeWatched(catId) {
+  const root = loadRoot();
+  const metaEps = root.meta[catId] && root.meta[catId].episodes;
+  root.watch[catId] = markEpisodesDone(root.watch[catId] || {}, metaEps, Date.now());
   saveRoot(root);
 }
 

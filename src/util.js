@@ -139,6 +139,34 @@ export function resumeTarget(episodes) {
   return { mode: 'next', ep: Number(lastEp) + 1 };
 }
 
+// 追番面板分區判定：該動畫是否已是「終端狀態」（已看完 / 已到最新進度），即沒有可續看的下一步。
+// false → 有進度（可繼續看／看下一集／看新集）置頂區；true → 終端狀態置下方區。判定須與 panelRowsHtml 的顯示一致。
+// episodes：{ [ep]: { done, watchedAt, ... } }；metaEpisodes：meta.episodes 陣列（可能 undefined）；newEps：已追平後新集數。
+export function isCaughtUp(episodes, metaEpisodes, newEps) {
+  const target = resumeTarget(episodes);
+  if (target.mode === 'resume') return false; // 有未看完的集 → 有進度
+  const hasNextItem =
+    Array.isArray(metaEpisodes) && metaEpisodes.some((it) => String(it.ep) === String(target.ep));
+  if (hasNextItem) return false; // 有下一集可看
+  if (newEps) return false; // 有新集可看
+  return true; // 看下一集無處可去、也沒有新集 → 已看完 / 已到最新進度
+}
+
+// 手動標記整部動畫為「已看完」：回傳新的 per-anime watch 物件（不改動輸入）。
+// 集數來源＝meta 全集清單 ∪ 已觀看的集；每集設 done，保留原有 currentTime/duration 等欄位。
+// watchedAt 依集數遞增（最大集最後看），讓 resumeTarget 指向最高集、其下一集不存在 → 落入「已看完」區。
+// now 由呼叫端提供（util 不呼叫 Date.now，且利於測試）。無任何已知集數時回空物件。
+export function markEpisodesDone(animeWatch, metaEpisodes, now) {
+  const eps = new Set(Object.keys(animeWatch || {}));
+  if (Array.isArray(metaEpisodes)) for (const it of metaEpisodes) if (it && it.ep != null) eps.add(String(it.ep));
+  const sorted = [...eps].sort((a, b) => Number(a) - Number(b));
+  const out = {};
+  sorted.forEach((ep, i) => {
+    out[ep] = { ...(animeWatch && animeWatch[ep]), done: true, watchedAt: now + i };
+  });
+  return out;
+}
+
 // 多端同步合併（GitHub Gist）：把兩份 { watch, meta } 併成一份，回傳新物件（不改動輸入）。
 // watch 逐集（per-episode）按 watchedAt 取較新的一筆——絕不可整包覆蓋，否則兩端看不同集會互相清掉。
 // meta 的 maxEpSeen 取兩邊較大（單調遞增，是更新提醒的依據）；title/episodes 採 maxEpSeen 大的一邊。

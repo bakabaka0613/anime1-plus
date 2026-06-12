@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.0
+// @version      0.6.2
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -293,6 +293,26 @@
     if (!episodes[lastEp].done) return { mode: "resume", ep: lastEp };
     return { mode: "next", ep: Number(lastEp) + 1 };
   }
+  function isCaughtUp(episodes, metaEpisodes, newEps) {
+    const target = resumeTarget(episodes);
+    if (target.mode === "resume") return false;
+    const hasNextItem = Array.isArray(metaEpisodes) && metaEpisodes.some((it) => String(it.ep) === String(target.ep));
+    if (hasNextItem) return false;
+    if (newEps) return false;
+    return true;
+  }
+  function markEpisodesDone(animeWatch, metaEpisodes, now) {
+    const eps = new Set(Object.keys(animeWatch || {}));
+    if (Array.isArray(metaEpisodes)) {
+      for (const it of metaEpisodes) if (it && it.ep != null) eps.add(String(it.ep));
+    }
+    const sorted = [...eps].sort((a, b) => Number(a) - Number(b));
+    const out = {};
+    sorted.forEach((ep, i) => {
+      out[ep] = { ...animeWatch && animeWatch[ep], done: true, watchedAt: now + i };
+    });
+    return out;
+  }
   function mergeSync(local, remote) {
     const lw = local && local.watch || {};
     const rw = remote && remote.watch || {};
@@ -478,6 +498,12 @@
     delete root.meta[catId];
     saveRoot(root);
   }
+  function markAnimeWatched(catId) {
+    const root = loadRoot();
+    const metaEps = root.meta[catId] && root.meta[catId].episodes;
+    root.watch[catId] = markEpisodesDone(root.watch[catId] || {}, metaEps, Date.now());
+    saveRoot(root);
+  }
   function clearAnimeWatch(catId) {
     const root = loadRoot();
     delete root.watch[catId];
@@ -628,20 +654,29 @@
 .a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
   background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
-.a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:320px;max-height:60vh;overflow:auto;
+.a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:370px;max-height:60vh;overflow:auto;
   background:#1b1b1f;border:1px solid #33343a;border-radius:10px;color:#e8e8ea;font-size:13px;padding:10px}
 .a1p-panel h4{margin:2px 0 8px;font-size:14px}
 .a1p-row{display:flex;gap:8px;padding:6px 0;border-top:1px solid #2a2a30;align-items:center}
-.a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30}
+.a1p-row img{width:40px;height:56px;object-fit:cover;border-radius:4px;flex:none;background:#2a2a30;cursor:zoom-in}
+/* 追番列封面 hover 放大預覽：浮在面板外（面板 overflow:auto 會裁切，故獨立貼 body 並 fixed 定位） */
+.a1p-cover-preview{position:fixed;z-index:2147483601;display:none;width:240px;height:338px;padding:4px;
+  background:#0b0b0d;border:1px solid #45464c;border-radius:8px;box-shadow:0 8px 28px #000a;
+  object-fit:contain;pointer-events:none}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
 .a1p-row .a1p-rname{font-weight:600}
 .a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
 .a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
   font-weight:700;line-height:1;padding:2px 6px;border-radius:99px;vertical-align:middle}
-.a1p-row-del{margin-left:auto;flex:none;border:1px solid #e0466e;background:transparent;color:#e0466e;
+.a1p-row-actions{margin-left:auto;flex:none;display:flex;flex-direction:column;gap:6px}
+.a1p-row-del{flex:none;border:1px solid #e0466e;background:transparent;color:#e0466e;
   cursor:pointer;border-radius:6px;width:28px;height:28px;font-size:15px;line-height:1;
   display:flex;align-items:center;justify-content:center}
 .a1p-row-del:hover{background:#e0466e;color:#fff}
+.a1p-row-done{flex:none;border:1px solid #7ee29a;background:transparent;color:#7ee29a;
+  cursor:pointer;border-radius:6px;width:28px;height:28px;font-size:15px;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+.a1p-row-done:hover{background:#1e3a24;color:#7ee29a}
 .a1p-panel-hint{margin:-4px 0 8px;font-size:11px;color:#e0466e}
 .a1p-hide{display:none!important}
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
@@ -1022,28 +1057,63 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (willOpen) {
         panel.classList.toggle("a1p-del-mode", e.shiftKey);
         renderPanel(panel);
+      } else {
+        preview.style.display = "none";
       }
     };
+    const preview = document.createElement("img");
+    preview.className = "a1p-cover-preview";
+    preview.referrerPolicy = "no-referrer";
+    document.body.appendChild(preview);
+    const isRowThumb = (el) => el && el.tagName === "IMG" && el.closest(".a1p-row") && !!el.getAttribute("src");
+    panel.addEventListener("mouseover", (e) => {
+      if (!isRowThumb(e.target)) return;
+      preview.src = e.target.src;
+      preview.style.display = "block";
+      const pr = panel.getBoundingClientRect();
+      const ir = e.target.getBoundingClientRect();
+      const pw = preview.offsetWidth;
+      const ph = preview.offsetHeight;
+      let left = pr.left - pw - 10;
+      if (left < 8) left = Math.min(pr.right + 10, window.innerWidth - pw - 8);
+      let top = ir.top + ir.height / 2 - ph / 2;
+      top = Math.max(8, Math.min(top, window.innerHeight - ph - 8));
+      preview.style.left = `${left}px`;
+      preview.style.top = `${top}px`;
+    });
+    panel.addEventListener("mouseout", (e) => {
+      if (isRowThumb(e.target)) preview.style.display = "none";
+    });
     panel.addEventListener("click", (e) => {
+      const done = e.target.closest(".a1p-row-done");
+      if (done) {
+        e.preventDefault();
+        e.stopPropagation();
+        const name2 = done.dataset.name || "這部動畫";
+        if (!confirm(`把「${name2}」標記為已看完？會把已知的每一集都設為看完。`)) return;
+        markAnimeWatched(done.dataset.cat);
+        renderPanel(panel);
+        return;
+      }
       const del = e.target.closest(".a1p-row-del");
       if (!del) return;
       e.preventDefault();
       e.stopPropagation();
-      const catId = del.dataset.cat;
       const name = del.dataset.name || "這部動畫";
       if (!confirm(`確定刪除「${name}」的觀看進度？（保留封面快取）此動作無法復原。`)) return;
-      clearAnimeWatch(catId);
+      clearAnimeWatch(del.dataset.cat);
       renderPanel(panel);
     });
   }
   async function renderPanel(panel) {
     const delMode = panel.classList.contains("a1p-del-mode");
-    const head = `<h4>追番清單</h4>${delMode ? '<div class="a1p-panel-hint">刪除模式：點右側 🗑 刪除該動畫進度</div>' : ""}`;
+    const head = `<h4>追番清單</h4>${delMode ? '<div class="a1p-panel-hint">管理模式：✓ 標記已看完、🗑 刪除該動畫進度</div>' : ""}`;
     const list = getInProgressList();
     if (!list.length) {
       panel.innerHTML = `${head}<div class="a1p-sub">還沒有觀看記錄</div>`;
       return;
     }
+    sortByGroup(list);
     panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
     const latestMap = await fetchLatestEpMap();
     for (const x of list) {
@@ -1051,8 +1121,13 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       x.newEps = caughtUpNewEpisodes(info ? info.ep : null, x.episodes, x.meta && x.meta.maxEpSeen);
       x.airing = !!(info && info.airing);
     }
-    list.sort((a, b) => (b.newEps ? 1 : 0) - (a.newEps ? 1 : 0));
+    sortByGroup(list);
     panel.innerHTML = `${head}${panelRowsHtml(list, delMode)}`;
+  }
+  function sortByGroup(list) {
+    list.sort(
+      (a, b) => (isCaughtUp(a.episodes, a.meta && a.meta.episodes, a.newEps) ? 1 : 0) - (isCaughtUp(b.episodes, b.meta && b.meta.episodes, b.newEps) ? 1 : 0)
+    );
   }
   function panelRowsHtml(list, delMode) {
     return list.map((x) => {
@@ -1085,11 +1160,12 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : "";
-      const del = delMode ? `<button class="a1p-row-del" type="button" title="刪除此動畫進度" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">🗑</button>` : "";
+      const caughtUp = isCaughtUp(eps, x.meta && x.meta.episodes, x.newEps);
+      const actions = delMode ? `<div class="a1p-row-actions">${caughtUp ? "" : `<button class="a1p-row-done" type="button" title="標記為已看完" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">✓</button>`}<button class="a1p-row-del" type="button" title="刪除此動畫進度" data-cat="${escapeHtml(x.catId)}" data-name="${escapeHtml(name)}">🗑</button></div>` : "";
       return `<div class="a1p-row${x.newEps ? " a1p-row-new" : ""}">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
         <div><div class="a1p-rname">${escapeHtml(name)}${badge}</div>${link}</div>
-        ${del}
+        ${actions}
       </div>`;
     }).join("");
   }

@@ -43,8 +43,13 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 - **Update reminders** only fire for anime that "once caught up to the then-latest episode"
   (relies on `meta.maxEpSeen`, recorded only after visiting the category page) — conservative, won't nag.
 - For airing anime fully watched, show "已到最新進度"; for completed, "已看完".
-- Tracking panel: **hold Shift + click 📺** to enter delete mode (🗑 per anime, removes that anime's
-  progress only, keeps cover cache); plain open has no delete buttons to avoid mis-deletes.
+- Tracking panel: rows are split into two sections — "in-progress" (resume / next / new ep) on top,
+  "finished / caught-up" below — each ordered by last-watched desc (`isCaughtUp` in `util.js` drives both
+  the sort and which terminal label shows). **Hold Shift + click 📺** to enter manage mode: per anime a
+  ✓ "mark watched" button (`markAnimeWatched` → marks every known ep done so it drops to the finished
+  section; hidden when already caught-up) and a 🗑 "delete progress" button (keeps cover cache). Plain
+  open has no buttons to avoid mis-clicks. Hovering a row's small cover thumbnail pops a larger preview
+  (floated outside the panel since it has `overflow:auto`).
 - zh-Hant→zh-Hans (OpenCC, jsdelivr `@require`) before Bangumi search (its index is mostly Simplified);
   if name/name_cn don't match, fall back to comparing Bangumi aliases. Cover card main title uses the
   **original anime1 Traditional name** (Bangumi Chinese is often Simplified).
