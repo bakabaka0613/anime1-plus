@@ -85,6 +85,36 @@ function setupRateHotkey() {
   );
 }
 
+// ---- 空白鍵播放/暫停（分類頁與單集頁共用）----
+// 之前只在單集頁的 bindShortcuts 綁定、且非 capture，分類頁就地播放無空格、又依賴焦點
+// （焦點在選集鈕等按鈕上時空格會觸發該按鈕而非暫停）→ 改為全域 capture，搶在 video.js 之前處理。
+let playPauseHotkeyBound = false;
+function setupPlayPauseHotkey() {
+  if (playPauseHotkeyBound) return;
+  playPauseHotkeyBound = true;
+  window.addEventListener(
+    'keydown',
+    (e) => {
+      if (e.key !== ' ' && e.code !== 'Space') return;
+      if (!getSettings().shortcuts) return;
+      if (e.repeat) return; // 長按不連續 toggle
+      const tag = (e.target && e.target.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+      const v = activeVideo();
+      if (!v) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      try {
+        v.paused ? v.play() : v.pause();
+      } catch {
+        /* ignore */
+      }
+    },
+    true,
+  );
+}
+
 // ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
 let webFullHotkeyBound = false;
 
@@ -182,6 +212,7 @@ export async function initEpisodePage(ctx) {
   setupWebFullHotkey();
   setupSeekHotkey();
   setupRateHotkey();
+  setupPlayPauseHotkey();
 
   // ---- 續播 ----
   if (settings.resume && ep != null) {
@@ -385,6 +416,7 @@ export function initCategoryPlayback(animeKey) {
   setupWebFullHotkey();
   setupSeekHotkey();
   setupRateHotkey();
+  setupPlayPauseHotkey();
   // 播放器多為點擊後 JS 動態插入 <video> → 持續監聽
   new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('pagehide', () => document.querySelectorAll('video').forEach((v) => {
@@ -403,10 +435,7 @@ function bindShortcuts(video, ctx) {
     if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
     switch (e.key) {
       // ←/→ 由全域 setupSeekHotkey 處理（秒數可調）
-      case ' ':
-        e.preventDefault();
-        video.paused ? video.play() : video.pause();
-        break;
+      // 空白鍵由全域 setupPlayPauseHotkey 處理（capture，分類頁/單集頁共用）
       case 'f':
       case 'F':
         if (document.fullscreenElement) document.exitFullscreen();

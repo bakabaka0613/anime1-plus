@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.17
+// @version      0.5.18
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -933,6 +933,31 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       true
     );
   }
+  var playPauseHotkeyBound = false;
+  function setupPlayPauseHotkey() {
+    if (playPauseHotkeyBound) return;
+    playPauseHotkeyBound = true;
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.key !== " " && e.code !== "Space") return;
+        if (!getSettings().shortcuts) return;
+        if (e.repeat) return;
+        const tag = e.target && e.target.tagName || "";
+        if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+        const v = activeVideo();
+        if (!v) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        try {
+          v.paused ? v.play() : v.pause();
+        } catch {
+        }
+      },
+      true
+    );
+  }
   var webFullHotkeyBound = false;
   function webFullBox(video) {
     return video.closest(".video-js") || video.parentElement;
@@ -1015,6 +1040,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     setupWebFullHotkey();
     setupSeekHotkey();
     setupRateHotkey();
+    setupPlayPauseHotkey();
     if (settings.resume && ep != null) {
       const rec = getEpisode(animeKey, ep);
       if (rec && !rec.done && rec.currentTime > 5) {
@@ -1182,6 +1208,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     setupWebFullHotkey();
     setupSeekHotkey();
     setupRateHotkey();
+    setupPlayPauseHotkey();
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener("pagehide", () => document.querySelectorAll("video").forEach((v) => {
       const ep = epForVideo(v);
@@ -1198,10 +1225,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
       switch (e.key) {
         // ←/→ 由全域 setupSeekHotkey 處理（秒數可調）
-        case " ":
-          e.preventDefault();
-          video.paused ? video.play() : video.pause();
-          break;
+        // 空白鍵由全域 setupPlayPauseHotkey 處理（capture，分類頁/單集頁共用）
         case "f":
         case "F":
           if (document.fullscreenElement) document.exitFullscreen();
