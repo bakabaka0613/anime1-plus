@@ -81,9 +81,14 @@ function importViaFile() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'application/json,.json';
-  input.onchange = () => {
+  input.style.display = 'none';
+  document.body.appendChild(input); // detached input 的 click() 在部分瀏覽器/Tampermonkey 會被忽略
+  input.addEventListener('change', () => {
     const file = input.files && input.files[0];
-    if (!file) return;
+    if (!file) {
+      input.remove();
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
@@ -91,10 +96,12 @@ function importViaFile() {
         toast('匯入完成，重新整理後生效', { duration: 4000 });
       } catch (e) {
         toast(`匯入失敗：${e.message}`, { duration: 5000 });
+      } finally {
+        input.remove();
       }
     };
     reader.readAsText(file);
-  };
+  });
   input.click();
 }
 

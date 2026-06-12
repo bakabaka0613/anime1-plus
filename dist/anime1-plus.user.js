@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.22
+// @version      0.5.23
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1881,9 +1881,14 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "application/json,.json";
-    input.onchange = () => {
+    input.style.display = "none";
+    document.body.appendChild(input);
+    input.addEventListener("change", () => {
       const file = input.files && input.files[0];
-      if (!file) return;
+      if (!file) {
+        input.remove();
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -1891,10 +1896,12 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           toast("匯入完成，重新整理後生效", { duration: 4e3 });
         } catch (e) {
           toast(`匯入失敗：${e.message}`, { duration: 5e3 });
+        } finally {
+          input.remove();
         }
       };
       reader.readAsText(file);
-    };
+    });
     input.click();
   }
   function registerMenu() {
