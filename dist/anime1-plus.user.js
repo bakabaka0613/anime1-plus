@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.1
+// @version      0.5.2
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -342,7 +342,7 @@
     return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/　/g, " ");
   }
   function normalizeName(s) {
-    return toHalfWidth(String(s || "")).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
+    return toSimplified(toHalfWidth(String(s || ""))).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
   }
   function levenshtein(a, b) {
     if (a === b) return 0;
@@ -366,7 +366,7 @@
     if (na === nb) return 1;
     if (na.includes(nb) || nb.includes(na)) {
       const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-      return 0.8 + 0.2 * ratio;
+      return 0.5 + 0.5 * ratio;
     }
     const dist = levenshtein(na, nb);
     return 1 - dist / Math.max(na.length, nb.length);

@@ -29,9 +29,8 @@ function toHalfWidth(s) {
 
 // 名稱正規化：去空白、標點、轉小寫、全形轉半形。用於相似度比對。
 export function normalizeName(s) {
-  // 注意：不在此做繁簡統一——會讓短名被不相關長名「包含」而虛高、造成誤採。
-  // 繁簡只用於搜尋關鍵字（searchAnime）。
-  return toHalfWidth(String(s || ''))
+  // 繁簡統一（OpenCC）讓繁體標題對上簡體 Bangumi 名；短名誤採由 similarity 的包含給分收斂。
+  return toSimplified(toHalfWidth(String(s || '')))
     .toLowerCase()
     .replace(/[\s]/g, '')
     .replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, '');
@@ -61,8 +60,9 @@ export function similarity(a, b) {
   if (!na || !nb) return 0;
   if (na === nb) return 1;
   if (na.includes(nb) || nb.includes(na)) {
+    // 依長度比例給分：短名被長名包含時給較低分，避免不相關短名虛高誤採
     const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-    return 0.8 + 0.2 * ratio;
+    return 0.5 + 0.5 * ratio;
   }
   const dist = levenshtein(na, nb);
   return 1 - dist / Math.max(na.length, nb.length);
