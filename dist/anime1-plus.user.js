@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.3.3
+// @version      0.3.4
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -473,6 +473,17 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
 .a1p-last{display:flex;align-items:center;gap:10px;margin:8px 0;padding:8px 12px;
   background:#15233a;border:1px solid #2c4a6e;border-radius:8px;color:#d6e4ff;font-size:14px}
 .a1p-last b{color:#fff}
+/* 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）*/
+.a1p-webfull{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;
+  max-width:none!important;margin:0!important;padding:0!important;border-radius:0!important;
+  background:#000!important;z-index:2147483600!important}
+.a1p-webfull video,.a1p-webfull .vjs-tech{width:100%!important;height:100%!important;object-fit:contain!important}
+body.a1p-webfull-lock{overflow:hidden!important}
+.a1p-webfull-btn{position:absolute;top:8px;right:8px;z-index:10;width:34px;height:34px;border:none;
+  border-radius:6px;background:#000a;color:#fff;font-size:17px;cursor:pointer;line-height:1;
+  display:flex;align-items:center;justify-content:center;opacity:.65}
+.a1p-webfull-btn:hover{opacity:1;background:#000c}
+.a1p-webfull .a1p-webfull-btn{top:12px;right:12px}
 `;
     const el = document.createElement("style");
     el.textContent = css;
@@ -686,6 +697,63 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
   function computeDone(cur, dur, threshold) {
     return dur > 60 && cur >= MIN_DONE_SEC && cur / dur >= (threshold || DONE_RATIO);
   }
+  var webFullHotkeyBound = false;
+  function webFullBox(video) {
+    return video.closest(".video-js") || video.parentElement;
+  }
+  function exitWebFull(box) {
+    box.classList.remove("a1p-webfull");
+    document.body.classList.remove("a1p-webfull-lock");
+  }
+  function enterWebFull(box) {
+    document.querySelectorAll(".a1p-webfull").forEach(exitWebFull);
+    box.classList.add("a1p-webfull");
+    document.body.classList.add("a1p-webfull-lock");
+  }
+  function toggleWebFull(box) {
+    if (box.classList.contains("a1p-webfull")) exitWebFull(box);
+    else enterWebFull(box);
+  }
+  function toggleWebFullCurrent() {
+    const cur = document.querySelector(".a1p-webfull");
+    if (cur) {
+      exitWebFull(cur);
+      return;
+    }
+    const vids = Array.from(document.querySelectorAll("video"));
+    const target = vids.find((v) => !v.paused) || vids[0];
+    if (target) enterWebFull(webFullBox(target));
+  }
+  function addWebFullButton(video) {
+    const box = webFullBox(video);
+    if (!box || box.querySelector(".a1p-webfull-btn")) return;
+    if (getComputedStyle(box).position === "static") box.style.position = "relative";
+    const btn = document.createElement("button");
+    btn.className = "a1p-webfull-btn";
+    btn.type = "button";
+    btn.title = "網頁全屏 (W)";
+    btn.textContent = "⛶";
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleWebFull(box);
+    });
+    box.appendChild(btn);
+  }
+  function setupWebFullHotkey() {
+    if (webFullHotkeyBound) return;
+    webFullHotkeyBound = true;
+    window.addEventListener("keydown", (e) => {
+      const tag = e.target && e.target.tagName || "";
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+      if (e.key === "w" || e.key === "W") {
+        toggleWebFullCurrent();
+      } else if (e.key === "Escape") {
+        const cur = document.querySelector(".a1p-webfull");
+        if (cur) exitWebFull(cur);
+      }
+    });
+  }
   function epForVideo(video) {
     const req = parseApiReq(video) || parseApiReq(video.closest("[data-apireq]"));
     if (req && req.e != null) {
@@ -707,6 +775,8 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
     if (!video) return;
     const settings = getSettings();
     const { animeKey, ep } = ctx;
+    addWebFullButton(video);
+    setupWebFullHotkey();
     if (settings.resume && ep != null) {
       const rec = getEpisode(animeKey, ep);
       if (rec && !rec.done && rec.currentTime > 5) {
@@ -795,6 +865,7 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
       const ep = epForVideo(video);
       if (ep == null) return;
       bound.add(video);
+      addWebFullButton(video);
       if (settings.resume) {
         const rec = getEpisode(animeKey, ep);
         if (rec && !rec.done && rec.currentTime > 5) {
@@ -846,6 +917,7 @@ body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
     };
     const scan = () => document.querySelectorAll("video").forEach(bind);
     scan();
+    setupWebFullHotkey();
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener("pagehide", () => document.querySelectorAll("video").forEach((v) => {
       const ep = epForVideo(v);

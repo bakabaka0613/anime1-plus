@@ -14,6 +14,66 @@ function computeDone(cur, dur, threshold) {
   return dur > 60 && cur >= MIN_DONE_SEC && cur / dur >= (threshold || DONE_RATIO);
 }
 
+// ---- 網頁全屏：把播放器容器放大填滿視窗（非系統全螢幕）----
+let webFullHotkeyBound = false;
+
+function webFullBox(video) {
+  return video.closest('.video-js') || video.parentElement;
+}
+function exitWebFull(box) {
+  box.classList.remove('a1p-webfull');
+  document.body.classList.remove('a1p-webfull-lock');
+}
+function enterWebFull(box) {
+  document.querySelectorAll('.a1p-webfull').forEach(exitWebFull);
+  box.classList.add('a1p-webfull');
+  document.body.classList.add('a1p-webfull-lock');
+}
+function toggleWebFull(box) {
+  if (box.classList.contains('a1p-webfull')) exitWebFull(box);
+  else enterWebFull(box);
+}
+function toggleWebFullCurrent() {
+  const cur = document.querySelector('.a1p-webfull');
+  if (cur) {
+    exitWebFull(cur);
+    return;
+  }
+  const vids = Array.from(document.querySelectorAll('video'));
+  const target = vids.find((v) => !v.paused) || vids[0];
+  if (target) enterWebFull(webFullBox(target));
+}
+function addWebFullButton(video) {
+  const box = webFullBox(video);
+  if (!box || box.querySelector('.a1p-webfull-btn')) return;
+  if (getComputedStyle(box).position === 'static') box.style.position = 'relative';
+  const btn = document.createElement('button');
+  btn.className = 'a1p-webfull-btn';
+  btn.type = 'button';
+  btn.title = '網頁全屏 (W)';
+  btn.textContent = '⛶';
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleWebFull(box);
+  });
+  box.appendChild(btn);
+}
+function setupWebFullHotkey() {
+  if (webFullHotkeyBound) return;
+  webFullHotkeyBound = true;
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (/INPUT|TEXTAREA|SELECT/.test(tag) || e.isComposing) return;
+    if (e.key === 'w' || e.key === 'W') {
+      toggleWebFullCurrent();
+    } else if (e.key === 'Escape') {
+      const cur = document.querySelector('.a1p-webfull');
+      if (cur) exitWebFull(cur);
+    }
+  });
+}
+
 // 判定某個 video 是第幾話。
 // 最精準來源：video（或其播放器容器）的 data-apireq.e（如 "11b" → 11）；其次該集 article 的標題。
 function epForVideo(video) {
@@ -46,6 +106,9 @@ export async function initEpisodePage(ctx) {
   if (!video) return; // 找不到播放器：靜默略過，不報錯
   const settings = getSettings();
   const { animeKey, ep } = ctx;
+
+  addWebFullButton(video);
+  setupWebFullHotkey();
 
   // ---- 續播 ----
   if (settings.resume && ep != null) {
@@ -159,6 +222,7 @@ export function initCategoryPlayback(animeKey) {
     const ep = epForVideo(video);
     if (ep == null) return; // 還無法定位集數（標題未就緒）→ 不標記，待下次掃描重試
     bound.add(video);
+    addWebFullButton(video);
 
     if (settings.resume) {
       const rec = getEpisode(animeKey, ep);
@@ -217,6 +281,7 @@ export function initCategoryPlayback(animeKey) {
 
   const scan = () => document.querySelectorAll('video').forEach(bind);
   scan();
+  setupWebFullHotkey();
   // 播放器多為點擊後 JS 動態插入 <video> → 持續監聽
   new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('pagehide', () => document.querySelectorAll('video').forEach((v) => {
