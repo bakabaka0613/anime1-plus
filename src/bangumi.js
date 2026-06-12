@@ -68,14 +68,22 @@ async function searchOnce(keyword, limit) {
 
 export async function searchAnime(keyword, limit = 10) {
   if (!keyword || !keyword.trim()) return [];
-  // Bangumi 索引多為簡體，繁體原文常搜出雜項 → 簡體優先，沒結果才退回繁體原文
+  // 合併簡體+繁體結果（去重）：多數條目索引為簡體，但有些別名是繁體（簡體搜不到）；
+  // 兩者都收，交給後續評分與別名比對挑出正確的。簡體在前（多數情況更準）。
   const simp = toSimplified(keyword);
   const variants = simp !== keyword ? [simp, keyword] : [keyword];
+  const seen = new Set();
+  const merged = [];
   for (const kw of variants) {
     const res = await searchOnce(kw, limit);
-    if (res.length) return res;
+    for (const s of res) {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        merged.push(s);
+      }
+    }
   }
-  return [];
+  return merged;
 }
 
 // 取某條目的所有名稱別名（infobox 的「别名/中文名/英文名」+ name/name_cn），供深度匹配

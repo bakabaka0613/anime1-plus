@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.10
+// @version      0.5.11
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1247,11 +1247,18 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (!keyword || !keyword.trim()) return [];
     const simp = toSimplified(keyword);
     const variants = simp !== keyword ? [simp, keyword] : [keyword];
+    const seen = /* @__PURE__ */ new Set();
+    const merged = [];
     for (const kw of variants) {
       const res = await searchOnce(kw, limit);
-      if (res.length) return res;
+      for (const s of res) {
+        if (!seen.has(s.id)) {
+          seen.add(s.id);
+          merged.push(s);
+        }
+      }
     }
-    return [];
+    return merged;
   }
   async function getSubjectAliases(id) {
     try {
