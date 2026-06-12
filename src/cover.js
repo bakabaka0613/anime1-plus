@@ -2,17 +2,19 @@
 import { searchAnime, coverUrl, getSubjectAliases } from './bangumi.js';
 import { rankCandidates } from './match.js';
 import { parseTitle } from './parse.js';
-import { similarity } from './util.js';
+import { similarity, toSimplified } from './util.js';
 import { getCover, setCover } from './store.js';
 import { renderCoverCard, renderCoverPicker } from './ui.js';
 
 // 深度比對：對前幾名候選抓 Bangumi 別名，若與解析名高度相符則回傳該候選（解決別名才相符的動畫）。
 async function matchByAlias(parsed, ranked) {
+  // 別名比對才做繁簡統一（局部），閾值收緊避免誤中
+  const target = toSimplified(parsed.baseName);
   for (const r of ranked.slice(0, 3)) {
     const aliases = await getSubjectAliases(r.subject.id);
     for (const al of aliases) {
-      const s = similarity(parsed.baseName, parseTitle(al).baseName || al);
-      if (s >= 0.85) return r;
+      const cand = toSimplified(parseTitle(al).baseName || al);
+      if (similarity(target, cand) >= 0.9) return r;
     }
   }
   return null;

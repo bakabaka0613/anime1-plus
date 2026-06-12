@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.9
+// @version      0.5.0
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -692,7 +692,7 @@
     return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/　/g, " ");
   }
   function normalizeName(s) {
-    return toSimplified(toHalfWidth(String(s || ""))).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
+    return toHalfWidth(String(s || "")).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
   }
   function levenshtein(a, b) {
     if (a === b) return 0;
@@ -1689,11 +1689,12 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
 
   // src/cover.js
   async function matchByAlias(parsed, ranked) {
+    const target = toSimplified(parsed.baseName);
     for (const r of ranked.slice(0, 3)) {
       const aliases = await getSubjectAliases(r.subject.id);
       for (const al of aliases) {
-        const s = similarity(parsed.baseName, parseTitle(al).baseName || al);
-        if (s >= 0.85) return r;
+        const cand = toSimplified(parseTitle(al).baseName || al);
+        if (similarity(target, cand) >= 0.9) return r;
       }
     }
     return null;

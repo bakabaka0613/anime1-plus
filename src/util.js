@@ -53,7 +53,9 @@ function toHalfWidth(s) {
 
 // 名稱正規化：去空白、標點、轉小寫、全形轉半形。用於相似度比對。
 export function normalizeName(s) {
-  return toSimplified(toHalfWidth(String(s || '')))
+  // 注意：不在此做繁簡統一——會讓短名被不相關長名「包含」而虛高、造成誤採。
+  // 繁簡只用於搜尋關鍵字（searchAnime）。
+  return toHalfWidth(String(s || ''))
     .toLowerCase()
     .replace(/[\s]/g, '')
     .replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, '');
