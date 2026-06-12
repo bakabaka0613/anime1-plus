@@ -1,6 +1,6 @@
 // 所有畫面注入：樣式、toast、封面卡 / 候選選擇、分類頁集數標記、追番面板。
 import { getInProgressList, getEpisode, setMeta, getAnimeWatch, getMeta, getSettings, setSettings } from './store.js';
-import { formatTime } from './util.js';
+import { formatTime, toTraditional } from './util.js';
 import { parseTitle } from './parse.js';
 
 const BGM = (id) => `https://bgm.tv/subject/${id}`;
@@ -444,9 +444,10 @@ function renderPanel(panel) {
     .map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : '';
       const cleanTitle = (s) => String(s || '').replace(/\s*[–\-|]\s*Anime1.*$/i, '').trim();
-      // 優先 anime1 原生繁體名（cover.local），其次 Bangumi 名，最後頁面標題
+      // 優先 anime1 原生繁體名（cover.local），其次 Bangumi 名，最後頁面標題。
+      // Bangumi name_cn 多為簡體 → 簡轉繁顯示（local 已是繁體、name 為日文，皆不轉）。
       const name =
-        (x.cover && (x.cover.local || x.cover.name_cn || x.cover.name)) ||
+        (x.cover && (x.cover.local || (x.cover.name_cn && toTraditional(x.cover.name_cn)) || x.cover.name)) ||
         cleanTitle(x.meta && x.meta.title) ||
         x.catId;
       // 找最近一集未看完，給「繼續看」連結

@@ -1,23 +1,30 @@
 // 純工具函式（不依賴 GM / DOM，可被 node:test 直接 import）。
 
-// 繁→簡轉換：OpenCC 由 userscript @require 從 CDN 載入全域 OpenCC（node:test 無 → 原樣返回）。
-let _ccConv = null;
-let _ccTried = false;
-function ccConverter() {
-  if (_ccTried) return _ccConv;
-  _ccTried = true;
+// 繁簡轉換：OpenCC 由 userscript @require 從 CDN 載入全域 OpenCC（node:test 無 → 原樣返回）。
+const _ccCache = {};
+function ccConverter(from, to) {
+  const key = `${from}2${to}`;
+  if (key in _ccCache) return _ccCache[key];
+  _ccCache[key] = null;
   try {
     const g = typeof unsafeWindow !== 'undefined' ? unsafeWindow : typeof window !== 'undefined' ? window : {};
     const OC = (typeof OpenCC !== 'undefined' && OpenCC) || g.OpenCC;
-    if (OC && OC.Converter) _ccConv = OC.Converter({ from: 'tw', to: 'cn' });
+    if (OC && OC.Converter) _ccCache[key] = OC.Converter({ from, to });
   } catch {
     /* ignore */
   }
-  return _ccConv;
+  return _ccCache[key];
 }
+// 繁→簡：名稱正規化、Bangumi 搜尋用（多數條目索引為簡體）。
 export function toSimplified(s) {
   const str = String(s || '');
-  const conv = ccConverter();
+  const conv = ccConverter('tw', 'cn');
+  return conv ? conv(str) : str;
+}
+// 簡→繁：Bangumi 條目名多為簡體，顯示時轉回繁體（anime1 為繁體站）。
+export function toTraditional(s) {
+  const str = String(s || '');
+  const conv = ccConverter('cn', 'tw');
   return conv ? conv(str) : str;
 }
 

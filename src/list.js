@@ -97,10 +97,11 @@ export function initListPage() {
       return true;
     }
     if (res.data) {
-      // 高信心：直接採用、無提示
-      setCover(key, res.data);
-      img.src = res.data.cover || '';
-      markCover(img, res.data);
+      // 高信心：直接採用、無提示。帶上 anime1 列表的繁體原名（local）供追番清單顯示繁體。
+      const data = { ...res.data, local: name };
+      setCover(key, data);
+      img.src = data.cover || '';
+      markCover(img, data);
       return true;
     }
     const top = res.ranked && res.ranked[0];
@@ -110,6 +111,7 @@ export function initListPage() {
         // 信心不足也照放圖，標記「待確認」誘導使用者點進分類頁重新比對／手選；
         // 存成 tentative → 分類頁 lookupCover 不直接採用，會重新嚴謹比對。
         data.tentative = true;
+        data.local = name; // anime1 繁體原名
         setCover(key, data);
         img.src = data.cover;
         markCover(img, data);

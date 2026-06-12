@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.18
+// @version      0.5.19
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -320,22 +320,27 @@
   }
 
   // src/util.js
-  var _ccConv = null;
-  var _ccTried = false;
-  function ccConverter() {
-    if (_ccTried) return _ccConv;
-    _ccTried = true;
+  var _ccCache = {};
+  function ccConverter(from, to) {
+    const key = `${from}2${to}`;
+    if (key in _ccCache) return _ccCache[key];
+    _ccCache[key] = null;
     try {
       const g = typeof unsafeWindow !== "undefined" ? unsafeWindow : typeof window !== "undefined" ? window : {};
       const OC = typeof OpenCC !== "undefined" && OpenCC || g.OpenCC;
-      if (OC && OC.Converter) _ccConv = OC.Converter({ from: "tw", to: "cn" });
+      if (OC && OC.Converter) _ccCache[key] = OC.Converter({ from, to });
     } catch {
     }
-    return _ccConv;
+    return _ccCache[key];
   }
   function toSimplified(s) {
     const str = String(s || "");
-    const conv = ccConverter();
+    const conv = ccConverter("tw", "cn");
+    return conv ? conv(str) : str;
+  }
+  function toTraditional(s) {
+    const str = String(s || "");
+    const conv = ccConverter("cn", "tw");
     return conv ? conv(str) : str;
   }
   function toHalfWidth(s) {
@@ -827,7 +832,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const rows = list.map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : "";
       const cleanTitle = (s) => String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
-      const name = x.cover && (x.cover.local || x.cover.name_cn || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
+      const name = x.cover && (x.cover.local || x.cover.name_cn && toTraditional(x.cover.name_cn) || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
       const eps = x.episodes;
       const num = String(x.catId).replace(/^cat:/, "");
       const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : "#";
@@ -1547,9 +1552,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         return true;
       }
       if (res.data) {
-        setCover(key, res.data);
-        img.src = res.data.cover || "";
-        markCover(img, res.data);
+        const data = { ...res.data, local: name };
+        setCover(key, data);
+        img.src = data.cover || "";
+        markCover(img, data);
         return true;
       }
       const top = res.ranked && res.ranked[0];
@@ -1557,6 +1563,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         const data = toCoverData(top);
         if (data.cover) {
           data.tentative = true;
+          data.local = name;
           setCover(key, data);
           img.src = data.cover;
           markCover(img, data);
