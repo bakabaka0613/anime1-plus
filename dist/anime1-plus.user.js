@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.4.3
+// @version      0.4.4
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -776,15 +776,24 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const cleanTitle = (s) => String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
       const name = x.cover && (x.cover.local || x.cover.name_cn || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
       const eps = x.episodes;
-      let resume = null;
       let resumeEp = null;
+      let resumeAt = -1;
       for (const e of Object.keys(eps)) {
-        if (!eps[e].done) {
-          resume = x.meta && x.meta.episodes && x.meta.episodes.find((it) => String(it.ep) === String(e)) || null;
+        if (!eps[e].done && (eps[e].watchedAt || 0) > resumeAt) {
+          resumeAt = eps[e].watchedAt || 0;
           resumeEp = e;
         }
       }
-      const link = resume ? `<a href="${resume.url}">繼續看 第${resumeEp}集 (${formatTime((eps[resumeEp] || {}).currentTime || 0)})</a>` : '<span class="a1p-sub">已看完</span>';
+      let link;
+      if (resumeEp != null) {
+        const item = x.meta && Array.isArray(x.meta.episodes) ? x.meta.episodes.find((it) => String(it.ep) === String(resumeEp)) : null;
+        const num = String(x.catId).replace(/^cat:/, "");
+        const url = item ? item.url : /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : "#";
+        const t = formatTime((eps[resumeEp] || {}).currentTime || 0);
+        link = `<a href="${url}">繼續看 第${resumeEp}集 (${t})</a>`;
+      } else {
+        link = '<span class="a1p-sub">已看完</span>';
+      }
       return `<div class="a1p-row">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
         <div><div class="a1p-rname">${escapeHtml(name)}</div>${link}</div>
