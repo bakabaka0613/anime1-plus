@@ -12,6 +12,7 @@ import {
   getAnimeTitle,
 } from './dom.js';
 import { parseTitle } from './parse.js';
+import { toSimplified } from './util.js';
 import { initEpisodePage, initCategoryPlayback } from './progress.js';
 import { resolveCover } from './cover.js';
 import { initListPage } from './list.js';
@@ -144,6 +145,13 @@ function registerMenu() {
 }
 
 function main() {
+  // 啟動自測：確認版本與 OpenCC 是否生效（「輪迴的花瓣」應轉成「轮回的花瓣」）
+  try {
+    const ver = typeof GM_info !== 'undefined' && GM_info.script ? GM_info.script.version : '?';
+    console.log(`[anime1-plus] v${ver} opencc 自測 輪迴的花瓣 → ${toSimplified('輪迴的花瓣')}`);
+  } catch (e) {
+    console.warn('[anime1-plus] opencc 自測失敗', e);
+  }
   injectStyles();
   mountTrackingPanel();
   mountSidebarToggle();
