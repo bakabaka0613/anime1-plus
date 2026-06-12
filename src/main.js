@@ -77,34 +77,6 @@ function downloadJson(text, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function importViaFile() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'application/json,.json';
-  input.style.display = 'none';
-  document.body.appendChild(input); // detached input 的 click() 在部分瀏覽器/Tampermonkey 會被忽略
-  input.addEventListener('change', () => {
-    const file = input.files && input.files[0];
-    if (!file) {
-      input.remove();
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        importAll(String(reader.result), { merge: true });
-        toast('匯入完成，重新整理後生效', { duration: 4000 });
-      } catch (e) {
-        toast(`匯入失敗：${e.message}`, { duration: 5000 });
-      } finally {
-        input.remove();
-      }
-    };
-    reader.readAsText(file);
-  });
-  input.click();
-}
-
 // 貼上 JSON 匯入：自建對話框，不經檔案選擇器（油猴選單觸發的 file picker 常因 user gesture 失效）。
 function importViaPaste() {
   injectStyles();
@@ -145,8 +117,7 @@ function registerMenu() {
   GM_registerMenuCommand('匯出資料 (JSON)', () =>
     downloadJson(exportAll(), `anime1-plus-${new Date().toISOString().slice(0, 10)}.json`),
   );
-  GM_registerMenuCommand('匯入資料 (JSON 檔案)', importViaFile);
-  GM_registerMenuCommand('匯入資料（貼上 JSON）', importViaPaste);
+  GM_registerMenuCommand('匯入資料 (JSON)', importViaPaste);
   GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
     const cur = getSettings().seekSeconds || 5;
     const v = prompt('方向鍵快進/後退秒數（1–120）：', String(cur));

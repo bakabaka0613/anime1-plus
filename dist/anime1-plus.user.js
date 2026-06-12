@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.26
+// @version      0.5.27
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -1900,33 +1900,6 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   }
-  function importViaFile() {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "application/json,.json";
-    input.style.display = "none";
-    document.body.appendChild(input);
-    input.addEventListener("change", () => {
-      const file = input.files && input.files[0];
-      if (!file) {
-        input.remove();
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          importAll(String(reader.result), { merge: true });
-          toast("匯入完成，重新整理後生效", { duration: 4e3 });
-        } catch (e) {
-          toast(`匯入失敗：${e.message}`, { duration: 5e3 });
-        } finally {
-          input.remove();
-        }
-      };
-      reader.readAsText(file);
-    });
-    input.click();
-  }
   function importViaPaste() {
     injectStyles();
     const overlay = document.createElement("div");
@@ -1966,8 +1939,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       "匯出資料 (JSON)",
       () => downloadJson(exportAll(), `anime1-plus-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`)
     );
-    GM_registerMenuCommand("匯入資料 (JSON 檔案)", importViaFile);
-    GM_registerMenuCommand("匯入資料（貼上 JSON）", importViaPaste);
+    GM_registerMenuCommand("匯入資料 (JSON)", importViaPaste);
     GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
       const cur = getSettings().seekSeconds || 5;
       const v = prompt("方向鍵快進/後退秒數（1–120）：", String(cur));
