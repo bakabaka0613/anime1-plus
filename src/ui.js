@@ -419,7 +419,7 @@ export function mountTrackingPanel() {
 }
 
 function renderPanel(panel) {
-  const list = getInProgressList().filter((x) => x.anyUnfinished);
+  const list = getInProgressList(); // 含「當前記錄全看完」的，改顯示「看下一集」而非消失
   if (!list.length) {
     panel.innerHTML = '<h4>追番清單</h4><div class="a1p-sub">還沒有觀看記錄</div>';
     return;
@@ -436,7 +436,16 @@ function renderPanel(panel) {
         x.catId;
       // 找最近一集未看完，給「繼續看」連結
       const eps = x.episodes;
-      // 未看完的集中取「最近看的」；判斷依據是有沒有未看完的集，而非該集連結是否在當前分頁清單裡
+      const num = String(x.catId).replace(/^cat:/, '');
+      const catUrl = /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : '#';
+      const epUrl = (ep) => {
+        const item =
+          x.meta && Array.isArray(x.meta.episodes)
+            ? x.meta.episodes.find((it) => String(it.ep) === String(ep))
+            : null;
+        return item ? item.url : catUrl; // 不在當前分頁清單時退回全集連結
+      };
+      // 優先未看完的最近集；全部看完則指向下一集（最大已看集 + 1）
       let resumeEp = null;
       let resumeAt = -1;
       for (const e of Object.keys(eps)) {
@@ -447,17 +456,12 @@ function renderPanel(panel) {
       }
       let link;
       if (resumeEp != null) {
-        const item =
-          x.meta && Array.isArray(x.meta.episodes)
-            ? x.meta.episodes.find((it) => String(it.ep) === String(resumeEp))
-            : null;
-        const num = String(x.catId).replace(/^cat:/, '');
-        // 連結不在當前分頁清單時，退回全集連結 /?cat=<id>（導到該動畫分類頁）
-        const url = item ? item.url : /^\d+$/.test(num) ? `https://anime1.me/?cat=${num}` : '#';
         const t = formatTime((eps[resumeEp] || {}).currentTime || 0);
-        link = `<a href="${url}">繼續看 第${resumeEp}集 (${t})</a>`;
+        link = `<a href="${epUrl(resumeEp)}">繼續看 第${resumeEp}集 (${t})</a>`;
       } else {
-        link = '<span class="a1p-sub">已看完</span>';
+        const maxEp = Math.max(...Object.keys(eps).map(Number).filter((n) => !Number.isNaN(n)));
+        const nextEp = Number.isFinite(maxEp) ? maxEp + 1 : 1;
+        link = `<a href="${epUrl(nextEp)}">看下一集 第${nextEp}集</a>`;
       }
       return `<div class="a1p-row">
         <img referrerpolicy="no-referrer" src="${cover}" alt="">
