@@ -441,7 +441,6 @@ function renderPanel(panel) {
     return;
   }
   const rows = list
-    .slice(0, 30)
     .map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : '';
       const cleanTitle = (s) => String(s || '').replace(/\s*[–\-|]\s*Anime1.*$/i, '').trim();

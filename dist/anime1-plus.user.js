@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.16
+// @version      0.5.17
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -824,7 +824,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       panel.innerHTML = '<h4>追番清單</h4><div class="a1p-sub">還沒有觀看記錄</div>';
       return;
     }
-    const rows = list.slice(0, 30).map((x) => {
+    const rows = list.map((x) => {
       const cover = x.cover && x.cover.cover ? x.cover.cover : "";
       const cleanTitle = (s) => String(s || "").replace(/\s*[–\-|]\s*Anime1.*$/i, "").trim();
       const name = x.cover && (x.cover.local || x.cover.name_cn || x.cover.name) || cleanTitle(x.meta && x.meta.title) || x.catId;
