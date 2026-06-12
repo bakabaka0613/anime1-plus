@@ -30,20 +30,38 @@ function animeRef(a) {
   return null;
 }
 
-// 依封面資料的信心在海報上加/移除「待確認」角標。
+// 依封面資料的信心在海報上加/移除「待確認」角標（疊在海報容器 .a1p-poster-wrap 上）。
 // tentative=true（列表頁低信心暫定）→ 顯示提示，誘導使用者點進分類頁重新比對／手選。
 function markCover(img, data) {
-  const td = img && img.parentNode;
-  if (!td) return;
+  const box = img && img.parentNode;
+  if (!box) return;
   const uncertain = !!(data && data.tentative);
-  let tag = td.querySelector('.a1p-cover-uncertain');
+  let tag = box.querySelector('.a1p-cover-uncertain');
   if (uncertain && !tag) {
     tag = document.createElement('span');
     tag.className = 'a1p-cover-uncertain';
     tag.textContent = '? 待確認';
     tag.title = '封面比對信心較低，點擊進入該動畫可重新比對或手動選擇';
-    td.appendChild(tag);
+    box.appendChild(tag);
   } else if (!uncertain && tag) {
+    tag.remove();
+  }
+}
+
+// 在海報右下顯示 Bangumi 評分「★ 8.5」。無評分（0/null）→ 不顯示。
+function markRating(img, data) {
+  const box = img && img.parentNode;
+  if (!box) return;
+  const score = data && data.rating;
+  let tag = box.querySelector('.a1p-rating-badge');
+  if (score) {
+    if (!tag) {
+      tag = document.createElement('span');
+      tag.className = 'a1p-rating-badge';
+      box.appendChild(tag);
+    }
+    tag.textContent = `★ ${Number(score).toFixed(1)}`;
+  } else if (tag) {
     tag.remove();
   }
 }
@@ -94,6 +112,7 @@ export function initListPage() {
     if (res.cached) {
       img.src = res.data.cover || '';
       markCover(img, res.data);
+      markRating(img, res.data);
       return true;
     }
     if (res.data) {
@@ -102,6 +121,7 @@ export function initListPage() {
       setCover(key, data);
       img.src = data.cover || '';
       markCover(img, data);
+      markRating(img, data);
       return true;
     }
     const top = res.ranked && res.ranked[0];
@@ -115,6 +135,7 @@ export function initListPage() {
         setCover(key, data);
         img.src = data.cover;
         markCover(img, data);
+        markRating(img, data);
       }
       return true;
     }
@@ -155,12 +176,17 @@ export function initListPage() {
     img.addEventListener('click', () => {
       window.location.href = a.href; // 點封面也進該動畫連結
     });
-    nameTd.insertBefore(img, nameTd.firstChild);
+    // 海報容器：作為角標（待確認／評分）的定位基準，避免相對到含標題的整格
+    const wrap = document.createElement('div');
+    wrap.className = 'a1p-poster-wrap';
+    wrap.appendChild(img);
+    nameTd.insertBefore(wrap, nameTd.firstChild);
 
     const cached = getCover(ref.key);
     if (cached && cached.cover) {
       img.src = cached.cover;
       markCover(img, cached);
+      markRating(img, cached);
       return;
     }
     img._a1pJob = { img, key: ref.key, name, year: ref.year };

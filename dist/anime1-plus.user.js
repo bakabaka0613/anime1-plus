@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.28
+// @version      0.5.29
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -534,12 +534,19 @@
 .a1p-list-thumb{width:34px;height:48px;object-fit:cover;border-radius:4px;vertical-align:middle;
   margin-right:8px;background:#2a2a30;display:inline-block}
 .a1p-thumb-unknown{border:1px dashed #6a6a72}
+/* 海報容器：角標（待確認／評分）的定位基準。原始列表模式同封面一起隱藏 */
+.a1p-poster-wrap{display:none}
+body.a1p-grid-on .a1p-poster-wrap{display:block;position:relative}
 /* 封面待確認角標：低信心仍放圖，左上角標提示，誘導點進分類頁重新比對／手選 */
 .a1p-cover-uncertain{display:none}
-body.a1p-grid-on .a1p-grid-table tbody td:first-child{position:relative}
 body.a1p-grid-on .a1p-cover-uncertain{display:flex;align-items:center;gap:3px;position:absolute;
   top:6px;left:6px;z-index:2;pointer-events:none;background:#3a2f1ee6;color:#e2c47e;font-size:11px;
   font-weight:600;line-height:1;padding:3px 7px;border-radius:99px;border:1px solid #6b5a2e;backdrop-filter:blur(2px)}
+/* Bangumi 評分：海報右下角「★ 8.5」 */
+.a1p-rating-badge{display:none}
+body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bottom:6px;z-index:2;
+  pointer-events:none;background:#000a;color:#ffd24a;font-size:12px;font-weight:700;line-height:1;
+  padding:3px 7px;border-radius:99px;backdrop-filter:blur(2px)}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
@@ -1376,7 +1383,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       name: s.name,
       name_cn: s.name_cn,
       date: s.air_date || s.date,
-      images: s.images
+      images: s.images,
+      rating: s.rating
     }));
   }
   async function searchOnce(keyword, limit) {
@@ -1513,7 +1521,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       cover: coverUrl(s),
       name: s.name,
       name_cn: s.name_cn,
+      rating: s.rating && s.rating.score || null,
+      // Bangumi 用戶評分（0–10），0/無 → null
       score: scored.score,
+      // 注意：這是我們的比對信心分數，非 Bangumi 評分
       manual
     };
   }
@@ -1581,17 +1592,33 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     return null;
   }
   function markCover(img, data) {
-    const td = img && img.parentNode;
-    if (!td) return;
+    const box = img && img.parentNode;
+    if (!box) return;
     const uncertain = !!(data && data.tentative);
-    let tag = td.querySelector(".a1p-cover-uncertain");
+    let tag = box.querySelector(".a1p-cover-uncertain");
     if (uncertain && !tag) {
       tag = document.createElement("span");
       tag.className = "a1p-cover-uncertain";
       tag.textContent = "? 待確認";
       tag.title = "封面比對信心較低，點擊進入該動畫可重新比對或手動選擇";
-      td.appendChild(tag);
+      box.appendChild(tag);
     } else if (!uncertain && tag) {
+      tag.remove();
+    }
+  }
+  function markRating(img, data) {
+    const box = img && img.parentNode;
+    if (!box) return;
+    const score = data && data.rating;
+    let tag = box.querySelector(".a1p-rating-badge");
+    if (score) {
+      if (!tag) {
+        tag = document.createElement("span");
+        tag.className = "a1p-rating-badge";
+        box.appendChild(tag);
+      }
+      tag.textContent = `★ ${Number(score).toFixed(1)}`;
+    } else if (tag) {
       tag.remove();
     }
   }
@@ -1638,6 +1665,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (res.cached) {
         img.src = res.data.cover || "";
         markCover(img, res.data);
+        markRating(img, res.data);
         return true;
       }
       if (res.data) {
@@ -1645,6 +1673,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         setCover(key, data);
         img.src = data.cover || "";
         markCover(img, data);
+        markRating(img, data);
         return true;
       }
       const top = res.ranked && res.ranked[0];
@@ -1656,6 +1685,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           setCover(key, data);
           img.src = data.cover;
           markCover(img, data);
+          markRating(img, data);
         }
         return true;
       }
@@ -1691,11 +1721,15 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       img.addEventListener("click", () => {
         window.location.href = a.href;
       });
-      nameTd.insertBefore(img, nameTd.firstChild);
+      const wrap = document.createElement("div");
+      wrap.className = "a1p-poster-wrap";
+      wrap.appendChild(img);
+      nameTd.insertBefore(wrap, nameTd.firstChild);
       const cached = getCover(ref.key);
       if (cached && cached.cover) {
         img.src = cached.cover;
         markCover(img, cached);
+        markRating(img, cached);
         return;
       }
       img._a1pJob = { img, key: ref.key, name, year: ref.year };

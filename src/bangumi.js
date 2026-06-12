@@ -46,6 +46,7 @@ async function searchLegacy(keyword, limit) {
     name_cn: s.name_cn,
     date: s.air_date || s.date,
     images: s.images,
+    rating: s.rating,
   }));
 }
 

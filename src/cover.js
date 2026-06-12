@@ -29,7 +29,8 @@ export function toCoverData(scored, manual = false) {
     cover: coverUrl(s),
     name: s.name,
     name_cn: s.name_cn,
-    score: scored.score,
+    rating: (s.rating && s.rating.score) || null, // Bangumi 用戶評分（0–10），0/無 → null
+    score: scored.score, // 注意：這是我們的比對信心分數，非 Bangumi 評分
     manual,
   };
 }
