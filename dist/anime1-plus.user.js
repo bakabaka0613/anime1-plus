@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.3.6
+// @version      0.3.7
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -719,7 +719,7 @@ body.a1p-webfull-lock{overflow:hidden!important}
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        const sec = Number(getSettings().seekSeconds) || 10;
+        const sec = e.shiftKey ? 10 : Number(getSettings().seekSeconds) || 10;
         const d = e.key === "ArrowLeft" ? -sec : sec;
         try {
           v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));

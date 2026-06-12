@@ -38,7 +38,8 @@ function setupSeekHotkey() {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      const sec = Number(getSettings().seekSeconds) || 10;
+      // Shift + ←/→ 固定 10 秒；單獨 ←/→ 用可調秒數
+      const sec = e.shiftKey ? 10 : Number(getSettings().seekSeconds) || 10;
       const d = e.key === 'ArrowLeft' ? -sec : sec;
       try {
         v.currentTime = Math.max(0, Math.min(v.duration || 0, v.currentTime + d));
