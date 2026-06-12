@@ -139,6 +139,47 @@ export function resumeTarget(episodes) {
   return { mode: 'next', ep: Number(lastEp) + 1 };
 }
 
+// 多端同步合併（GitHub Gist）：把兩份 { watch, meta } 併成一份，回傳新物件（不改動輸入）。
+// watch 逐集（per-episode）按 watchedAt 取較新的一筆——絕不可整包覆蓋，否則兩端看不同集會互相清掉。
+// meta 的 maxEpSeen 取兩邊較大（單調遞增，是更新提醒的依據）；title/episodes 採 maxEpSeen 大的一邊。
+export function mergeSync(local, remote) {
+  const lw = (local && local.watch) || {};
+  const rw = (remote && remote.watch) || {};
+  const lm = (local && local.meta) || {};
+  const rm = (remote && remote.meta) || {};
+
+  const watch = {};
+  for (const catId of new Set([...Object.keys(lw), ...Object.keys(rw)])) {
+    const le = lw[catId] || {};
+    const re = rw[catId] || {};
+    const eps = {};
+    for (const ep of new Set([...Object.keys(le), ...Object.keys(re)])) {
+      const a = le[ep];
+      const b = re[ep];
+      if (!a) eps[ep] = b;
+      else if (!b) eps[ep] = a;
+      else eps[ep] = (b.watchedAt || 0) >= (a.watchedAt || 0) ? b : a; // 同分採 remote
+    }
+    watch[catId] = eps;
+  }
+
+  const meta = {};
+  for (const catId of new Set([...Object.keys(lm), ...Object.keys(rm)])) {
+    const a = lm[catId];
+    const b = rm[catId];
+    if (!a) meta[catId] = b;
+    else if (!b) meta[catId] = a;
+    else {
+      const am = typeof a.maxEpSeen === 'number' ? a.maxEpSeen : -Infinity;
+      const bm = typeof b.maxEpSeen === 'number' ? b.maxEpSeen : -Infinity;
+      const base = bm >= am ? b : a; // title/episodes 隨 maxEpSeen 大的一邊
+      meta[catId] = { ...base, maxEpSeen: Math.max(am, bm) };
+    }
+  }
+
+  return { watch, meta };
+}
+
 // 節流：每 wait 毫秒最多執行一次（首呼立即、尾呼補一次）。
 export function throttle(fn, wait) {
   let last = 0;

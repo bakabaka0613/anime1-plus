@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 import { mkdirSync } from 'node:fs';
 
-const VERSION = '0.5.42';
+const VERSION = '0.6.0';
 const REPO = 'bakabaka0613/anime1-plus';
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/dist/anime1-plus.user.js`;
 
@@ -28,6 +28,7 @@ const banner = `// ==UserScript==
 // @grant        unsafeWindow
 // @connect      api.bgm.tv
 // @connect      lain.bgm.tv
+// @connect      api.github.com
 // @require      https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js
 // @run-at       document-idle
 // @noframes

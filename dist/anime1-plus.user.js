@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.42
+// @version      0.6.0
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -19,6 +19,7 @@
 // @grant        unsafeWindow
 // @connect      api.bgm.tv
 // @connect      lain.bgm.tv
+// @connect      api.github.com
 // @require      https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.js
 // @run-at       document-idle
 // @noframes
@@ -189,8 +190,179 @@
     return { raw: title, ep, epRaw, seasonNum, type, baseName: normalizeSpace(r3) };
   }
 
+  // src/util.js
+  var _ccCache = {};
+  function ccConverter(from, to) {
+    const key = `${from}2${to}`;
+    if (key in _ccCache) return _ccCache[key];
+    _ccCache[key] = null;
+    try {
+      const g = typeof unsafeWindow !== "undefined" ? unsafeWindow : typeof window !== "undefined" ? window : {};
+      const OC = typeof OpenCC !== "undefined" && OpenCC || g.OpenCC;
+      if (OC && OC.Converter) _ccCache[key] = OC.Converter({ from, to });
+    } catch {
+    }
+    return _ccCache[key];
+  }
+  function toSimplified(s) {
+    const str = String(s || "");
+    const conv = ccConverter("tw", "cn");
+    return conv ? conv(str) : str;
+  }
+  function toTraditional(s) {
+    const str = String(s || "");
+    const conv = ccConverter("cn", "tw");
+    return conv ? conv(str) : str;
+  }
+  function toHalfWidth(s) {
+    return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/　/g, " ");
+  }
+  function normalizeName(s) {
+    return toSimplified(toHalfWidth(String(s || ""))).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
+  }
+  function levenshtein(a, b) {
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      }
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function similarity(a, b) {
+    const na = normalizeName(a);
+    const nb = normalizeName(b);
+    if (!na || !nb) return 0;
+    if (na === nb) return 1;
+    if (na.includes(nb) || nb.includes(na)) {
+      const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
+      return 0.3 + 0.5 * ratio;
+    }
+    const dist = levenshtein(na, nb);
+    return 1 - dist / Math.max(na.length, nb.length);
+  }
+  function parseLatestEp(text) {
+    const t = String(text || "").trim();
+    const airing = t.match(/連載中\s*\(([^)]*)\)/);
+    const head = airing ? airing[1] : t.split("+")[0];
+    const nums = head.match(/\d+(?:\.\d+)?/g);
+    return nums ? Math.max(...nums.map(Number)) : null;
+  }
+  function isAiring(text) {
+    return /連載中/.test(String(text || ""));
+  }
+  function pendingNewEpisodes(latestEp, watch) {
+    if (latestEp == null) return null;
+    let maxDone = null;
+    for (const ep of Object.keys(watch || {})) {
+      if (!watch[ep] || !watch[ep].done) continue;
+      const n = Number(ep);
+      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+    }
+    if (maxDone === null || latestEp <= maxDone) return null;
+    return latestEp - maxDone;
+  }
+  function caughtUpNewEpisodes(latestEp, watch, maxEpSeen) {
+    if (latestEp == null || maxEpSeen == null) return null;
+    let maxDone = null;
+    for (const ep of Object.keys(watch || {})) {
+      if (!watch[ep] || !watch[ep].done) continue;
+      const n = Number(ep);
+      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
+    }
+    if (maxDone === null || maxDone < maxEpSeen || latestEp <= maxDone) return null;
+    return latestEp - maxDone;
+  }
+  function resumeTarget(episodes) {
+    let lastEp = null;
+    let lastAt = -1;
+    for (const e of Object.keys(episodes || {})) {
+      const at = episodes[e] && episodes[e].watchedAt || 0;
+      if (at > lastAt) {
+        lastAt = at;
+        lastEp = e;
+      }
+    }
+    if (lastEp == null) return { mode: "none" };
+    if (!episodes[lastEp].done) return { mode: "resume", ep: lastEp };
+    return { mode: "next", ep: Number(lastEp) + 1 };
+  }
+  function mergeSync(local, remote) {
+    const lw = local && local.watch || {};
+    const rw = remote && remote.watch || {};
+    const lm = local && local.meta || {};
+    const rm = remote && remote.meta || {};
+    const watch = {};
+    for (const catId of /* @__PURE__ */ new Set([...Object.keys(lw), ...Object.keys(rw)])) {
+      const le = lw[catId] || {};
+      const re = rw[catId] || {};
+      const eps = {};
+      for (const ep of /* @__PURE__ */ new Set([...Object.keys(le), ...Object.keys(re)])) {
+        const a = le[ep];
+        const b = re[ep];
+        if (!a) eps[ep] = b;
+        else if (!b) eps[ep] = a;
+        else eps[ep] = (b.watchedAt || 0) >= (a.watchedAt || 0) ? b : a;
+      }
+      watch[catId] = eps;
+    }
+    const meta = {};
+    for (const catId of /* @__PURE__ */ new Set([...Object.keys(lm), ...Object.keys(rm)])) {
+      const a = lm[catId];
+      const b = rm[catId];
+      if (!a) meta[catId] = b;
+      else if (!b) meta[catId] = a;
+      else {
+        const am = typeof a.maxEpSeen === "number" ? a.maxEpSeen : -Infinity;
+        const bm = typeof b.maxEpSeen === "number" ? b.maxEpSeen : -Infinity;
+        const base = bm >= am ? b : a;
+        meta[catId] = { ...base, maxEpSeen: Math.max(am, bm) };
+      }
+    }
+    return { watch, meta };
+  }
+  function throttle(fn, wait) {
+    let last = 0;
+    let timer = null;
+    let lastArgs = null;
+    return function throttled(...args) {
+      lastArgs = args;
+      const now = Date.now();
+      const remaining = wait - (now - last);
+      if (remaining <= 0) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        last = now;
+        fn.apply(this, lastArgs);
+      } else if (!timer) {
+        timer = setTimeout(() => {
+          last = Date.now();
+          timer = null;
+          fn.apply(this, lastArgs);
+        }, remaining);
+      }
+    };
+  }
+  function formatTime(sec) {
+    if (!Number.isFinite(sec) || sec < 0) sec = 0;
+    const s = Math.floor(sec % 60);
+    const m = Math.floor(sec / 60 % 60);
+    const h = Math.floor(sec / 3600);
+    const pad = (n) => String(n).padStart(2, "0");
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+
   // src/store.js
   var ROOT_KEY = "a1p:data";
+  var SYNC_KEY = "a1p:sync";
   var DEFAULT_SETTINGS = {
     autoNext: true,
     // 看完自動下一集
@@ -230,8 +402,18 @@
       return { covers: {}, watch: {}, meta: {}, settings: { ...DEFAULT_SETTINGS } };
     }
   }
+  var changeListener = null;
+  function onDataChange(fn) {
+    changeListener = fn;
+  }
   function saveRoot(root) {
     GM_setValue(ROOT_KEY, JSON.stringify(root));
+    if (changeListener) {
+      try {
+        changeListener();
+      } catch {
+      }
+    }
   }
   function getCover(catId) {
     return loadRoot().covers[catId] || null;
@@ -348,141 +530,34 @@
       settings: { ...root.settings, ...incoming.settings || {} }
     });
   }
-
-  // src/util.js
-  var _ccCache = {};
-  function ccConverter(from, to) {
-    const key = `${from}2${to}`;
-    if (key in _ccCache) return _ccCache[key];
-    _ccCache[key] = null;
+  var DEFAULT_SYNC = { token: "", gistId: "", enabled: false, lastSyncAt: 0, lastError: "" };
+  function getSyncConfig() {
     try {
-      const g = typeof unsafeWindow !== "undefined" ? unsafeWindow : typeof window !== "undefined" ? window : {};
-      const OC = typeof OpenCC !== "undefined" && OpenCC || g.OpenCC;
-      if (OC && OC.Converter) _ccCache[key] = OC.Converter({ from, to });
+      const raw = GM_getValue(SYNC_KEY, "");
+      return { ...DEFAULT_SYNC, ...raw ? JSON.parse(raw) : {} };
     } catch {
+      return { ...DEFAULT_SYNC };
     }
-    return _ccCache[key];
   }
-  function toSimplified(s) {
-    const str = String(s || "");
-    const conv = ccConverter("tw", "cn");
-    return conv ? conv(str) : str;
+  function setSyncConfig(patch) {
+    const next = { ...getSyncConfig(), ...patch };
+    GM_setValue(SYNC_KEY, JSON.stringify(next));
+    return next;
   }
-  function toTraditional(s) {
-    const str = String(s || "");
-    const conv = ccConverter("cn", "tw");
-    return conv ? conv(str) : str;
+  function getSyncSubset() {
+    const root = loadRoot();
+    return { watch: root.watch, meta: root.meta };
   }
-  function toHalfWidth(s) {
-    return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/　/g, " ");
-  }
-  function normalizeName(s) {
-    return toSimplified(toHalfWidth(String(s || ""))).toLowerCase().replace(/[\s]/g, "").replace(/[!?。．・:~\-—_、,「」『』()\[\]{}"'’“”…★☆※／/]/g, "");
-  }
-  function levenshtein(a, b) {
-    if (a === b) return 0;
-    if (!a.length) return b.length;
-    if (!b.length) return a.length;
-    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-    for (let i = 1; i <= a.length; i++) {
-      const cur = [i];
-      for (let j = 1; j <= b.length; j++) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
-      }
-      prev = cur;
-    }
-    return prev[b.length];
-  }
-  function similarity(a, b) {
-    const na = normalizeName(a);
-    const nb = normalizeName(b);
-    if (!na || !nb) return 0;
-    if (na === nb) return 1;
-    if (na.includes(nb) || nb.includes(na)) {
-      const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-      return 0.3 + 0.5 * ratio;
-    }
-    const dist = levenshtein(na, nb);
-    return 1 - dist / Math.max(na.length, nb.length);
-  }
-  function parseLatestEp(text) {
-    const t = String(text || "").trim();
-    const airing = t.match(/連載中\s*\(([^)]*)\)/);
-    const head = airing ? airing[1] : t.split("+")[0];
-    const nums = head.match(/\d+(?:\.\d+)?/g);
-    return nums ? Math.max(...nums.map(Number)) : null;
-  }
-  function isAiring(text) {
-    return /連載中/.test(String(text || ""));
-  }
-  function pendingNewEpisodes(latestEp, watch) {
-    if (latestEp == null) return null;
-    let maxDone = null;
-    for (const ep of Object.keys(watch || {})) {
-      if (!watch[ep] || !watch[ep].done) continue;
-      const n = Number(ep);
-      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
-    }
-    if (maxDone === null || latestEp <= maxDone) return null;
-    return latestEp - maxDone;
-  }
-  function caughtUpNewEpisodes(latestEp, watch, maxEpSeen) {
-    if (latestEp == null || maxEpSeen == null) return null;
-    let maxDone = null;
-    for (const ep of Object.keys(watch || {})) {
-      if (!watch[ep] || !watch[ep].done) continue;
-      const n = Number(ep);
-      if (!Number.isNaN(n) && (maxDone === null || n > maxDone)) maxDone = n;
-    }
-    if (maxDone === null || maxDone < maxEpSeen || latestEp <= maxDone) return null;
-    return latestEp - maxDone;
-  }
-  function resumeTarget(episodes) {
-    let lastEp = null;
-    let lastAt = -1;
-    for (const e of Object.keys(episodes || {})) {
-      const at = episodes[e] && episodes[e].watchedAt || 0;
-      if (at > lastAt) {
-        lastAt = at;
-        lastEp = e;
-      }
-    }
-    if (lastEp == null) return { mode: "none" };
-    if (!episodes[lastEp].done) return { mode: "resume", ep: lastEp };
-    return { mode: "next", ep: Number(lastEp) + 1 };
-  }
-  function throttle(fn, wait) {
-    let last = 0;
-    let timer = null;
-    let lastArgs = null;
-    return function throttled(...args) {
-      lastArgs = args;
-      const now = Date.now();
-      const remaining = wait - (now - last);
-      if (remaining <= 0) {
-        if (timer) {
-          clearTimeout(timer);
-          timer = null;
-        }
-        last = now;
-        fn.apply(this, lastArgs);
-      } else if (!timer) {
-        timer = setTimeout(() => {
-          last = Date.now();
-          timer = null;
-          fn.apply(this, lastArgs);
-        }, remaining);
-      }
-    };
-  }
-  function formatTime(sec) {
-    if (!Number.isFinite(sec) || sec < 0) sec = 0;
-    const s = Math.floor(sec % 60);
-    const m = Math.floor(sec / 60 % 60);
-    const h = Math.floor(sec / 3600);
-    const pad = (n) => String(n).padStart(2, "0");
-    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  function applySyncedData(incoming) {
+    const root = loadRoot();
+    const before = JSON.stringify({ watch: root.watch, meta: root.meta });
+    const merged = mergeSync({ watch: root.watch, meta: root.meta }, incoming || {});
+    const after = JSON.stringify(merged);
+    if (after === before) return { changed: false };
+    root.watch = merged.watch;
+    root.meta = merged.meta;
+    saveRoot(root);
+    return { changed: true };
   }
 
   // src/animelist.js
@@ -1956,6 +2031,157 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     }
   }
 
+  // src/sync.js
+  var GIST_FILENAME = "anime1-plus-sync.json";
+  var GIST_DESC = "anime1-plus 追番進度同步（請勿手動編輯）";
+  var PUSH_DEBOUNCE = 4e3;
+  function gmGist({ method, path, token, body }) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method,
+        url: `https://api.github.com${path}`,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28",
+          "Content-Type": "application/json"
+        },
+        data: body ? JSON.stringify(body) : void 0,
+        timeout: 2e4,
+        onload: (res) => resolve(res),
+        onerror: () => reject(new Error("網路錯誤")),
+        ontimeout: () => reject(new Error("逾時"))
+      });
+    });
+  }
+  function parseOrThrow(res, ctx) {
+    if (res.status < 200 || res.status >= 300) {
+      let msg = `${ctx} HTTP ${res.status}`;
+      try {
+        const j = JSON.parse(res.responseText);
+        if (j && j.message) msg += `（${j.message}）`;
+      } catch {
+      }
+      throw new Error(msg);
+    }
+    return JSON.parse(res.responseText);
+  }
+  async function createGist(token) {
+    const res = await gmGist({
+      method: "POST",
+      path: "/gists",
+      token,
+      body: {
+        description: GIST_DESC,
+        public: false,
+        files: { [GIST_FILENAME]: { content: '{"_v":1,"watch":{},"meta":{}}' } }
+      }
+    });
+    return parseOrThrow(res, "建立 gist").id;
+  }
+  async function findExistingGist(token) {
+    const res = await gmGist({ method: "GET", path: "/gists?per_page=100", token });
+    const list = parseOrThrow(res, "列出 gist");
+    const hit = Array.isArray(list) ? list.find((g) => g.files && g.files[GIST_FILENAME]) : null;
+    return hit ? hit.id : null;
+  }
+  async function gistReachable(token, gistId) {
+    const res = await gmGist({ method: "GET", path: `/gists/${gistId}`, token });
+    if (res.status >= 200 && res.status < 300) return true;
+    if (res.status === 404) return false;
+    parseOrThrow(res, "讀取 gist");
+  }
+  async function resolveGistId(token, existingId, deps = {}) {
+    const { reachable = gistReachable, find = findExistingGist, create = createGist } = deps;
+    if (existingId && await reachable(token, existingId)) return existingId;
+    return await find(token) || await create(token);
+  }
+  async function pullGist(token, gistId) {
+    const res = await gmGist({ method: "GET", path: `/gists/${gistId}`, token });
+    const gist = parseOrThrow(res, "讀取 gist");
+    const file = gist.files && gist.files[GIST_FILENAME];
+    if (!file || !file.content) return { watch: {}, meta: {} };
+    if (file.truncated) throw new Error("同步資料過大（>1MB），暫不支援");
+    const obj = JSON.parse(file.content);
+    return { watch: obj.watch || {}, meta: obj.meta || {} };
+  }
+  async function pushGist(token, gistId, subset) {
+    const content = JSON.stringify({ _v: 1, watch: subset.watch || {}, meta: subset.meta || {} });
+    const res = await gmGist({
+      method: "PATCH",
+      path: `/gists/${gistId}`,
+      token,
+      body: { files: { [GIST_FILENAME]: { content } } }
+    });
+    parseOrThrow(res, "寫入 gist");
+  }
+  var syncing = false;
+  var pushTimer = null;
+  async function syncNow({ silent = false } = {}) {
+    const cfg = getSyncConfig();
+    if (!cfg.enabled || !cfg.token || !cfg.gistId) return { ok: false, reason: "not-configured" };
+    if (syncing) return { ok: false, reason: "busy" };
+    syncing = true;
+    try {
+      const remote = await pullGist(cfg.token, cfg.gistId);
+      const { changed } = applySyncedData(remote);
+      const subset = getSyncSubset();
+      const remoteStr = JSON.stringify({ watch: remote.watch || {}, meta: remote.meta || {} });
+      const localStr = JSON.stringify({ watch: subset.watch || {}, meta: subset.meta || {} });
+      if (localStr !== remoteStr) await pushGist(cfg.token, cfg.gistId, subset);
+      setSyncConfig({ lastSyncAt: Date.now(), lastError: "" });
+      if (changed && !silent) toast("已同步追番進度，部分頁面重新整理後更新", { duration: 3500 });
+      return { ok: true, changed };
+    } catch (e) {
+      setSyncConfig({ lastError: e.message });
+      if (!silent) toast(`同步失敗：${e.message}`, { duration: 5e3 });
+      return { ok: false, reason: e.message };
+    } finally {
+      syncing = false;
+    }
+  }
+  function schedulePush() {
+    if (syncing) return;
+    const cfg = getSyncConfig();
+    if (!cfg.enabled || !cfg.token || !cfg.gistId) return;
+    if (pushTimer) clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => {
+      pushTimer = null;
+      syncNow({ silent: true });
+    }, PUSH_DEBOUNCE);
+  }
+  function initSync() {
+    onDataChange(schedulePush);
+    const cfg = getSyncConfig();
+    if (cfg.enabled && cfg.token && cfg.gistId) syncNow({ silent: true });
+  }
+  async function configureSync() {
+    const cfg = getSyncConfig();
+    const input = prompt(
+      "貼上 GitHub Personal Access Token\n（fine-grained，只需勾選 Gist 讀寫權限）。\n留空並確定＝刪除 token 並停用同步：",
+      cfg.token || ""
+    );
+    if (input === null) return;
+    const token = input.trim();
+    if (!token) {
+      setSyncConfig({ token: "", enabled: false });
+      toast("已刪除 token 並停用多端同步", { duration: 3e3 });
+      return;
+    }
+    setSyncConfig({ token });
+    toast("正在設定同步…", { duration: 2e3 });
+    try {
+      const gistId = await resolveGistId(token, cfg.gistId);
+      setSyncConfig({ gistId, enabled: true, lastError: "" });
+      const r = await syncNow({ silent: true });
+      if (r.ok) toast("同步已啟用並完成首次同步 ✓", { duration: 3500 });
+      else toast(`同步已設定，但首次同步失敗：${r.reason}`, { duration: 5e3 });
+    } catch (e) {
+      setSyncConfig({ lastError: e.message });
+      toast(`設定同步失敗：${e.message}`, { duration: 5e3 });
+    }
+  }
+
   // src/main.js
   var currentAnimeKey = null;
   function initCategoryPage() {
@@ -2036,6 +2262,22 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       () => downloadJson(exportAll(), `anime1-plus-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`)
     );
     GM_registerMenuCommand("匯入資料 (JSON)", importViaPaste);
+    const sync = getSyncConfig();
+    if (sync.enabled && sync.gistId) {
+      GM_registerMenuCommand("☁️ 立即同步", async () => {
+        toast("同步中…", { duration: 1500 });
+        const r = await syncNow({ silent: true });
+        if (r.ok) toast(r.changed ? "同步完成，部分頁面重新整理後更新" : "已是最新進度 ✓", { duration: 3e3 });
+        else toast(`同步失敗：${r.reason}`, { duration: 5e3 });
+      });
+      GM_registerMenuCommand("☁️ 同步設定（變更 token）…", configureSync);
+      GM_registerMenuCommand("✓ 多端同步（點此停用）", () => {
+        setSyncConfig({ enabled: false });
+        toast("已停用多端同步（選單下次開啟更新）", { duration: 2500 });
+      });
+    } else {
+      GM_registerMenuCommand("☁️ 設定多端同步（GitHub Gist）…", configureSync);
+    }
     GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
       const cur = getSettings().seekSeconds || 5;
       const v = prompt("方向鍵快進/後退秒數（1–120）：", String(cur));
@@ -2100,6 +2342,7 @@ ${menu}`, "");
       if (getSettings().listThumbs) initListPage();
     }
     registerMenu();
+    initSync();
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", main);

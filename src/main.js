@@ -24,7 +24,8 @@ import {
   collapseToSinglePlayer,
   toast,
 } from './ui.js';
-import { exportAll, importAll, getSettings, setSettings, clearAnime, clearCover, clearCovers, clearWatch, clearSettings, clearAll } from './store.js';
+import { exportAll, importAll, getSettings, setSettings, getSyncConfig, setSyncConfig, clearAnime, clearCover, clearCovers, clearWatch, clearSettings, clearAll } from './store.js';
+import { initSync, configureSync, syncNow } from './sync.js';
 
 let currentAnimeKey = null;
 
@@ -118,6 +119,25 @@ function registerMenu() {
     downloadJson(exportAll(), `anime1-plus-${new Date().toISOString().slice(0, 10)}.json`),
   );
   GM_registerMenuCommand('匯入資料 (JSON)', importViaPaste);
+
+  // 多端同步（GitHub Gist）
+  const sync = getSyncConfig();
+  if (sync.enabled && sync.gistId) {
+    GM_registerMenuCommand('☁️ 立即同步', async () => {
+      toast('同步中…', { duration: 1500 });
+      const r = await syncNow({ silent: true });
+      if (r.ok) toast(r.changed ? '同步完成，部分頁面重新整理後更新' : '已是最新進度 ✓', { duration: 3000 });
+      else toast(`同步失敗：${r.reason}`, { duration: 5000 });
+    });
+    GM_registerMenuCommand('☁️ 同步設定（變更 token）…', configureSync);
+    GM_registerMenuCommand('✓ 多端同步（點此停用）', () => {
+      setSyncConfig({ enabled: false });
+      toast('已停用多端同步（選單下次開啟更新）', { duration: 2500 });
+    });
+  } else {
+    GM_registerMenuCommand('☁️ 設定多端同步（GitHub Gist）…', configureSync);
+  }
+
   GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
     const cur = getSettings().seekSeconds || 5;
     const v = prompt('方向鍵快進/後退秒數（1–120）：', String(cur));
@@ -188,6 +208,7 @@ function main() {
   }
 
   registerMenu(); // 放最後：分派時已設定 currentAnimeKey，清除選單才能取到
+  initSync(); // 訂閱資料變動 + 啟動時拉一次遠端（已設定才會動）
 }
 
 if (document.readyState === 'loading') {

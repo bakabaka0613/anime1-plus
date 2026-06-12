@@ -1,7 +1,11 @@
 // 本機儲存封裝（Tampermonkey GM storage）。單一根物件，方便整包匯出/匯入。
 /* global GM_getValue, GM_setValue, GM_deleteValue */
+import { mergeSync } from './util.js';
 
 const ROOT_KEY = 'a1p:data';
+// 同步設定（token / gistId 等）獨立存放，刻意不放進 ROOT_KEY，
+// 這樣 exportAll() 匯出的 JSON 天然不含 token，貼給別人也不會外洩。
+const SYNC_KEY = 'a1p:sync';
 
 const DEFAULT_SETTINGS = {
   autoNext: true, // 看完自動下一集
@@ -31,8 +35,21 @@ function loadRoot() {
   }
 }
 
+// 資料變動監聽（單一監聽器）：讓 sync 模組訂閱寫入而不必被 store import（避免循環依賴）。
+let changeListener = null;
+export function onDataChange(fn) {
+  changeListener = fn;
+}
+
 function saveRoot(root) {
   GM_setValue(ROOT_KEY, JSON.stringify(root));
+  if (changeListener) {
+    try {
+      changeListener();
+    } catch {
+      /* 監聽器錯誤不可影響儲存 */
+    }
+  }
 }
 
 // ---- 封面 ----
@@ -174,4 +191,40 @@ export function importAll(jsonText, { merge = true } = {}) {
     meta: { ...root.meta, ...(incoming.meta || {}) },
     settings: { ...root.settings, ...(incoming.settings || {}) },
   });
+}
+
+// ---- 多端同步（GitHub Gist）----
+const DEFAULT_SYNC = { token: '', gistId: '', enabled: false, lastSyncAt: 0, lastError: '' };
+
+export function getSyncConfig() {
+  try {
+    const raw = GM_getValue(SYNC_KEY, '');
+    return { ...DEFAULT_SYNC, ...(raw ? JSON.parse(raw) : {}) };
+  } catch {
+    return { ...DEFAULT_SYNC };
+  }
+}
+export function setSyncConfig(patch) {
+  const next = { ...getSyncConfig(), ...patch };
+  GM_setValue(SYNC_KEY, JSON.stringify(next));
+  return next;
+}
+
+// 要上傳同步的子集：只同步觀看進度（watch）與追番輔助（meta），不含封面與裝置設定。
+export function getSyncSubset() {
+  const root = loadRoot();
+  return { watch: root.watch, meta: root.meta };
+}
+
+// 把遠端同步資料併入本機（逐集 watchedAt 合併）。回傳 { changed } 供決定是否重繪/再上傳。
+export function applySyncedData(incoming) {
+  const root = loadRoot();
+  const before = JSON.stringify({ watch: root.watch, meta: root.meta });
+  const merged = mergeSync({ watch: root.watch, meta: root.meta }, incoming || {});
+  const after = JSON.stringify(merged);
+  if (after === before) return { changed: false };
+  root.watch = merged.watch;
+  root.meta = merged.meta;
+  saveRoot(root);
+  return { changed: true };
 }
