@@ -105,12 +105,48 @@ function importViaFile() {
   input.click();
 }
 
+// 貼上 JSON 匯入：自建對話框，不經檔案選擇器（油猴選單觸發的 file picker 常因 user gesture 失效）。
+function importViaPaste() {
+  injectStyles();
+  const overlay = document.createElement('div');
+  overlay.className = 'a1p-modal-overlay';
+  overlay.innerHTML = `
+    <div class="a1p-modal">
+      <h4>貼上 JSON 匯入</h4>
+      <textarea class="a1p-modal-ta" placeholder="貼上匯出的 JSON…"></textarea>
+      <div class="a1p-modal-btns">
+        <button class="a1p-btn a1p-modal-cancel">取消</button>
+        <button class="a1p-btn a1p-modal-ok">匯入</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  const ta = overlay.querySelector('.a1p-modal-ta');
+  overlay.querySelector('.a1p-modal-cancel').onclick = close;
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close(); // 點背景關閉
+  });
+  overlay.querySelector('.a1p-modal-ok').onclick = () => {
+    const text = (ta.value || '').trim();
+    if (!text) return;
+    try {
+      importAll(text, { merge: true });
+      close();
+      toast('匯入完成，重新整理後生效', { duration: 4000 });
+    } catch (e) {
+      toast(`匯入失敗：${e.message}`, { duration: 5000 });
+    }
+  };
+  ta.focus();
+}
+
 function registerMenu() {
   if (typeof GM_registerMenuCommand !== 'function') return;
   GM_registerMenuCommand('匯出資料 (JSON)', () =>
     downloadJson(exportAll(), `anime1-plus-${new Date().toISOString().slice(0, 10)}.json`),
   );
-  GM_registerMenuCommand('匯入資料 (JSON)', importViaFile);
+  GM_registerMenuCommand('匯入資料 (JSON 檔案)', importViaFile);
+  GM_registerMenuCommand('匯入資料（貼上 JSON）', importViaPaste);
   GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
     const cur = getSettings().seekSeconds || 5;
     const v = prompt('方向鍵快進/後退秒數（1–120）：', String(cur));

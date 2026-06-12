@@ -35,6 +35,15 @@ export function injectStyles() {
 .a1p-toast{background:#26272cdd;color:#fff;border:1px solid #45464c;border-radius:8px;
   padding:8px 14px;font-size:14px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(4px)}
 .a1p-toast .a1p-btn{padding:2px 8px}
+/* 貼上 JSON 匯入對話框（不依賴檔案選擇器，油猴環境較可靠）*/
+.a1p-modal-overlay{position:fixed;inset:0;z-index:2147483640;background:#000a;
+  display:flex;align-items:center;justify-content:center}
+.a1p-modal{background:#1b1b1f;border:1px solid #33343a;border-radius:10px;padding:16px;
+  width:min(560px,90vw);color:#e8e8ea}
+.a1p-modal h4{margin:0 0 10px;font-size:15px}
+.a1p-modal-ta{width:100%;height:200px;box-sizing:border-box;background:#0d0d10;border:1px solid #45464c;
+  border-radius:6px;color:#e8e8ea;padding:8px;font-size:12px;font-family:monospace;resize:vertical}
+.a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
   background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
 .a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:320px;max-height:60vh;overflow:auto;

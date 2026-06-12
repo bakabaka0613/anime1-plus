@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.5.23
+// @version      0.5.24
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、快捷鍵
 // @author       bakabaka0613
 // @match        https://anime1.me/*
@@ -509,6 +509,15 @@
 .a1p-toast{background:#26272cdd;color:#fff;border:1px solid #45464c;border-radius:8px;
   padding:8px 14px;font-size:14px;display:flex;align-items:center;gap:10px;backdrop-filter:blur(4px)}
 .a1p-toast .a1p-btn{padding:2px 8px}
+/* 貼上 JSON 匯入對話框（不依賴檔案選擇器，油猴環境較可靠）*/
+.a1p-modal-overlay{position:fixed;inset:0;z-index:2147483640;background:#000a;
+  display:flex;align-items:center;justify-content:center}
+.a1p-modal{background:#1b1b1f;border:1px solid #33343a;border-radius:10px;padding:16px;
+  width:min(560px,90vw);color:#e8e8ea}
+.a1p-modal h4{margin:0 0 10px;font-size:15px}
+.a1p-modal-ta{width:100%;height:200px;box-sizing:border-box;background:#0d0d10;border:1px solid #45464c;
+  border-radius:6px;color:#e8e8ea;padding:8px;font-size:12px;font-family:monospace;resize:vertical}
+.a1p-modal-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
 .a1p-fab{position:fixed;right:18px;bottom:18px;z-index:2147483600;width:46px;height:46px;border-radius:50%;
   background:#7aa2f7;color:#0b1020;font-size:22px;border:none;cursor:pointer;box-shadow:0 3px 10px #0006}
 .a1p-panel{position:fixed;right:18px;bottom:74px;z-index:2147483600;width:320px;max-height:60vh;overflow:auto;
@@ -1904,13 +1913,47 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     });
     input.click();
   }
+  function importViaPaste() {
+    injectStyles();
+    const overlay = document.createElement("div");
+    overlay.className = "a1p-modal-overlay";
+    overlay.innerHTML = `
+    <div class="a1p-modal">
+      <h4>貼上 JSON 匯入</h4>
+      <textarea class="a1p-modal-ta" placeholder="貼上匯出的 JSON…"></textarea>
+      <div class="a1p-modal-btns">
+        <button class="a1p-btn a1p-modal-cancel">取消</button>
+        <button class="a1p-btn a1p-modal-ok">匯入</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    const ta = overlay.querySelector(".a1p-modal-ta");
+    overlay.querySelector(".a1p-modal-cancel").onclick = close;
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    overlay.querySelector(".a1p-modal-ok").onclick = () => {
+      const text = (ta.value || "").trim();
+      if (!text) return;
+      try {
+        importAll(text, { merge: true });
+        close();
+        toast("匯入完成，重新整理後生效", { duration: 4e3 });
+      } catch (e) {
+        toast(`匯入失敗：${e.message}`, { duration: 5e3 });
+      }
+    };
+    ta.focus();
+  }
   function registerMenu() {
     if (typeof GM_registerMenuCommand !== "function") return;
     GM_registerMenuCommand(
       "匯出資料 (JSON)",
       () => downloadJson(exportAll(), `anime1-plus-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.json`)
     );
-    GM_registerMenuCommand("匯入資料 (JSON)", importViaFile);
+    GM_registerMenuCommand("匯入資料 (JSON 檔案)", importViaFile);
+    GM_registerMenuCommand("匯入資料（貼上 JSON）", importViaPaste);
     GM_registerMenuCommand(`⏩ 方向鍵快進秒數（目前 ${getSettings().seekSeconds || 5}s）`, () => {
       const cur = getSettings().seekSeconds || 5;
       const v = prompt("方向鍵快進/後退秒數（1–120）：", String(cur));
