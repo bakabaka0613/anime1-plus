@@ -407,7 +407,10 @@ function mountToolbar() {
   const viewBtn = document.createElement('button');
   viewBtn.className = 'a1p-tb-btn';
   const refresh = () => {
-    viewBtn.textContent = document.body.classList.contains('a1p-grid-on') ? '☰ 原始列表' : '▦ 卡片檢視';
+    const on = document.body.classList.contains('a1p-grid-on');
+    // 圖標對換：卡片模式顯示 ▦、列表模式顯示 ☰（代表目前檢視狀態）
+    viewBtn.textContent = on ? '▦' : '☰';
+    viewBtn.title = on ? '切換為原始列表' : '切換為卡片檢視';
   };
   viewBtn.onclick = () => {
     const on = !document.body.classList.contains('a1p-grid-on');
@@ -433,13 +436,18 @@ function mountToolbar() {
   range.max = '360';
   range.step = '10';
   range.value = String(getSettings().cardWidth || 250);
-  const applyWidth = (w) => document.documentElement.style.setProperty('--a1p-card-w', `${w}px`);
+  const applyWidth = (w) => {
+    document.documentElement.style.setProperty('--a1p-card-w', `${w}px`);
+    // 同步 WebKit 自訂軌道的填色百分比（值→0..100%），讓最大值時填色畫到最右端
+    const pct = ((Number(w) - Number(range.min)) / (Number(range.max) - Number(range.min))) * 100;
+    range.style.setProperty('--a1p-range-fill', `${pct}%`);
+  };
   applyWidth(range.value);
   range.oninput = () => {
     applyWidth(range.value);
     setSettings({ cardWidth: Number(range.value) });
   };
-  sizeWrap.append('卡片大小', range);
+  sizeWrap.append(range);
 
   // 年+季桶篩選列（獨佔第二行，橫向捲動）。chip 由 initBucketFilter 載入後填入。
   const buckets = document.createElement('div');

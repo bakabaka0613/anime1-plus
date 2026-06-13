@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.35
+// @version      0.6.36
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -954,7 +954,9 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
 .a1p-toolbar-mask{position:fixed;top:0;left:0;right:0;z-index:2147483599;pointer-events:none;display:none}
 .a1p-toolbar-mask.on{display:block}
 .a1p-toolbar>*{align-self:center}
-.a1p-tb-search{flex:1 1 200px;min-width:160px;display:flex;align-items:center}
+/* flex-basis:0 是關鍵：flexbox 換行判斷用的是 basis 而非收縮後寬度，basis 設 0 才能讓
+   滑條與圖標鈕一律算進同一行、search 再以 flex-grow 吃掉剩餘空間，不被擠到下一行 */
+.a1p-tb-search{flex:1 1 0;min-width:0;display:flex;align-items:center}
 .a1p-tb-input{width:100%;height:32px;box-sizing:border-box;background:#1b1b1f;border:1px solid #45464c;
   border-radius:6px;color:#e8e8ea;padding:0 10px;font-size:13px}
 .dataTables_filter{display:none!important} /* 原生搜尋隱藏，由工具列的輸入框代理 */
@@ -962,6 +964,20 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
   border-radius:6px;height:32px;padding:0 12px;font-size:13px;white-space:nowrap}
 .a1p-tb-btn:hover{background:#303138}
 .a1p-tb-size{display:flex;align-items:center;gap:6px;height:32px;font-size:12px;color:#9aa0a6;white-space:nowrap}
+/* 滑條縮短成約一半長、固定寬不被 flex 擠壓。完全自訂外觀：原生 WebKit 的 accent 填色在
+   最大值時 thumb 中心只到「軌道寬 − 半 thumb」，右側恆留空白＝看起來拉不到底；改用 JS 依值
+   設 --a1p-range-fill 的漸層把填色畫到底（Firefox 用原生 ::-moz-range-progress）。*/
+.a1p-tb-size input[type=range]{-webkit-appearance:none;appearance:none;width:84px;flex:0 0 auto;
+  margin:0;height:18px;background:transparent;cursor:pointer}
+.a1p-tb-size input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;
+  background:linear-gradient(to right,#2f6fed var(--a1p-range-fill,50%),#45464c var(--a1p-range-fill,50%))}
+.a1p-tb-size input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+  width:16px;height:16px;border-radius:50%;background:#2f6fed;border:2px solid #e8e8ea;
+  box-sizing:border-box;margin-top:-4px}
+.a1p-tb-size input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:#45464c}
+.a1p-tb-size input[type=range]::-moz-range-progress{height:8px;border-radius:4px;background:#2f6fed}
+.a1p-tb-size input[type=range]::-moz-range-thumb{width:16px;height:16px;border:2px solid #e8e8ea;
+  border-radius:50%;background:#2f6fed;box-sizing:border-box}
 body:not(.a1p-grid-on) .a1p-tb-size{display:none} /* 原始列表模式不需大小調整 */
 /* 年+季桶篩選列：|(✕)‹ 桶 ›|。✕ 在捲動區外最左，頭尾 ‹› 為邊緣淡出指示（不可按）。 */
 .a1p-tb-bucketwrap{flex:1 1 100%;display:flex;align-items:center;gap:6px;min-width:0}
@@ -988,8 +1004,6 @@ body:not(.a1p-grid-on) .a1p-tb-size{display:none} /* 原始列表模式不需大
   width:26px;height:26px;padding:0;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
 .a1p-bucket-clear:hover{background:#3a2c2f}
 .a1p-bucket-clear[hidden]{display:none}
-/* 窄螢幕：搜尋框獨佔一行，卡片大小滑條與「原始列表」按鈕換到第二行並靠右，避免擠壓 */
-@media (max-width:640px){.a1p-tb-search{flex-basis:100%}.a1p-toolbar{justify-content:flex-end}}
 body.a1p-grid-on .a1p-grid-table thead{display:none}
 body.a1p-grid-on .a1p-grid-table{margin-top:8px!important}
 body.a1p-grid-on .dataTables_paginate,body.a1p-grid-on .dataTables_info,
@@ -2712,7 +2726,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const viewBtn = document.createElement("button");
     viewBtn.className = "a1p-tb-btn";
     const refresh = () => {
-      viewBtn.textContent = document.body.classList.contains("a1p-grid-on") ? "☰ 原始列表" : "▦ 卡片檢視";
+      const on = document.body.classList.contains("a1p-grid-on");
+      viewBtn.textContent = on ? "▦" : "☰";
+      viewBtn.title = on ? "切換為原始列表" : "切換為卡片檢視";
     };
     viewBtn.onclick = () => {
       const on = !document.body.classList.contains("a1p-grid-on");
@@ -2736,13 +2752,17 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     range.max = "360";
     range.step = "10";
     range.value = String(getSettings().cardWidth || 250);
-    const applyWidth = (w) => document.documentElement.style.setProperty("--a1p-card-w", `${w}px`);
+    const applyWidth = (w) => {
+      document.documentElement.style.setProperty("--a1p-card-w", `${w}px`);
+      const pct = (Number(w) - Number(range.min)) / (Number(range.max) - Number(range.min)) * 100;
+      range.style.setProperty("--a1p-range-fill", `${pct}%`);
+    };
     applyWidth(range.value);
     range.oninput = () => {
       applyWidth(range.value);
       setSettings({ cardWidth: Number(range.value) });
     };
-    sizeWrap.append("卡片大小", range);
+    sizeWrap.append(range);
     const buckets = document.createElement("div");
     buckets.className = "a1p-tb-buckets";
     buckets.addEventListener(
