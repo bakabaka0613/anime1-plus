@@ -38,10 +38,13 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 - **Shared cover-fetch queue** (`coverQueue.js`): ONE serial scheduler (concurrency 1) shared across all
   cover fetching so the Bangumi rate-limit actually holds. 3 priority tiers, each with its own min-gap:
   `visible` (home posters in viewport, 500ms) > `tracking` (tracking-list cover prefetch, 500ms) >
-  `recheck` (background `tentative` re-match, 5000ms). `enqueue(tier, run)`; `run` returns a boolean
+  `recheck` (background `tentative` re-match, 5000ms). `enqueue(tier, run, key?)`; `run` returns a boolean
   (false → retried ≤ MAX_RETRIES). Pump picks the highest non-empty tier and sleeps `min(gap,250)` in
   chunks so a newly-arrived higher-priority job **preempts** a low-tier's long wait (a viewport poster
   never waits behind recheck's 5s). `lastRunAt` is global → spacing is enforced across tiers.
+  `setSelector(tier, fn)` overrides FIFO pick-order for a tier: the `recheck` tier uses
+  `pickByHint(jobs, getRecheckHint())` so it always re-checks the tentative nearest the home viewport
+  first (jobs carry `key = catId`; live, re-read each pick — see multi-tab recheck below).
 - Covers are NOT synced (only watch+meta are), so a freshly-synced device has cover-less tracking rows.
   `list.js` fixes this: after the visible poster queue drains it prefetches covers for tracking-list anime
   lacking one, via the `tracking` tier (visible posters always win). Titles/years come from
@@ -58,6 +61,19 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   one-time `main()` snapshot alone misses session-new tentatives (e.g. after "clear this cover" → reload).
   Module-level `recheckQueued` Set dedups; `main()` also does a full-storage sweep (viewport-ordered via
   `viewportCatOrder()`) as a backstop. Runs on ALL page types.
+- **Multi-tab recheck coordination** (queue/lease/hint are per-tab module state, so N tabs would ×N the
+  Bangumi load): `enqueueRecheck(catId, {background})` splits two kinds. **Foreground** (`background:false`,
+  list.js render-driven = cards the user is looking at) is NOT leased — each tab rechecks its own viewport
+  locally. **Background** (`background:true`, the full sweep) is gated by a **cross-tab lease**
+  (`evaluateRecheckLease` in `util.js`; `a1p:recheck_lease` via `get/setRecheckLease`): only the lease
+  owner runs the sweep, others schedule a `setTimeout` resweep (15s > 12s TTL) to take over when the owner
+  closes. Lease decision is at the **sweep** level; per-job `claimRecheckLease()` just **renews**.
+  A recheck job **re-reads `getCover` fresh at run time** (never write back the enqueue-time snapshot — a
+  stale snapshot would clobber another tab's upgrade with `tentative + deepTried`). Upgrades broadcast via
+  `notifyCoverUpgrade` (`a1p:cover_evt`) → other list tabs `onCoverUpgradeEvent` (`GM_addValueChangeListener`,
+  remote-only; same-tab uses the `setCoverUpgradeHook`) repaint live. The home page publishes its viewport
+  order via `setRecheckHint` (`a1p:recheck_hint`, 30 nearest, 2-min freshness); the owner orders the sweep
+  by it so it prioritizes the home viewport even when the owner is a category tab.
 - Inline player on the **category page** is the real watch flow: identify episode via the player's
   `data-apireq`; single-episode page `/{postId}` also supported. Non-native `<video>` → silently skip
   progress (don't error).
@@ -107,10 +123,25 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   translations score high. A past regression came from a length-based containment boost that ignored the
   ratio → it false-confidently mis-matched and was reverted; keep guard tests
   (`短主名被無分隔長名包含 → 需確認`). Pure `levenshtein`/`lcsLength`/`similarity` live in `util.js`.
+- **Search-vs-match asymmetry + title segments.** anime1 titles dilute the Bangumi match in many ways
+  (prefix franchise, dash/CJK subtitle, bilingual name, parenthetical alias, multi-name aliases). Fixed by
+  `titleSearchSegments(baseName)` (`util.js`) which splits a title into segments — **parentheses first**
+  (`主名(通用譯名)`), then **Latin↔CJK boundary** (`GRAND BLUE 碧藍之海`), then **first separator**
+  (space / em-en dash / space-hyphen; in-name hyphens like `K-ON` survive). `cover.js` `lookupCover` runs a
+  **lazy deep fallback only when not confident**: (a) re-search each segment, merge, re-rank;
+  (b) `matchByAlias` over the top `ALIAS_CHECK_LIMIT`(=10) results, comparing each alias (and its
+  enumeration-split pieces via `splitAliasNames`, keeping the whole too) against `[baseName, ...segments]`
+  at ≥0.9. Also runs when confident-but-borderline (`<STRONG_SCORE` 0.8) to upgrade via an exact alias,
+  **same-subject only**. **Key asymmetry: segments are search/alias keys only; the similarity score always
+  uses the full `baseName`** — stripping a subtitle/prefix from baseName would turn an exact match into a
+  diluted containment. `searchAnime` itself only does simp/trad; segment logic lives in `cover.js`.
 - `parse.js` `extractSeason` removes **every** season marker (iterates all patterns, each once), not just
   the first — titles can carry redundant markers (`Season II ()（第2季）`); handles ASCII roman
-  (`Season II/III/…`) plus the existing CJK/unicode-roman forms; `normalizeSpace` strips leftover empty
-  `()`/`（）`. Keeps `baseName` clean for both search and similarity.
+  (`Season II/III/…`), **English ordinal words** (`first/…/sixth season`, e.g. `… -SECOND SEASON-`) plus the
+  existing CJK/unicode-roman forms; `normalizeSpace` strips leftover empty `()`/`（）` **and stray dash runs**
+  (`\s[–\-—]+(?=\s|$)`, in-name hyphens survive). `extractType` lists **both 繁 and 簡** type markers
+  (劇場版/剧场版, 總集篇/总集篇, …): candidate `name_cn` is Simplified and `nameScore` parses it too, so a
+  繁-only list would strip asymmetrically and dilute similarity. Keeps `baseName` clean for search+similarity.
 - Confidence-low covers: still show the image but add a "待確認" corner badge to nudge a manual pick.
 
 ## TDD

@@ -22,6 +22,7 @@ import {
   mountSidebarToggle,
   renderLastWatched,
   collapseToSinglePlayer,
+  enhanceEpisodeNav,
   toast,
 } from './ui.js';
 import { exportAll, importAll, getSettings, setSettings, getSyncConfig, setSyncConfig, clearAnime, clearCover, clearCovers, clearWatch, clearSettings, clearAll, migrateStored } from './store.js';
@@ -45,6 +46,7 @@ function initCategoryPage() {
   resolveCover({ animeKey, title: animeName, year, mountEl });
   // 折疊重複播放器：上方選集、下方單一播放器
   collapseToSinglePlayer(animeKey);
+  enhanceEpisodeNav({ hide: true }); // 分類頁：隱藏原生「全集連結／下一集」（已有選集列＋封面卡，冗餘）
   // 使用者就在分類頁內嵌播放器看 → 在此記錄真實播放進度
   initCategoryPlayback(animeKey);
 
@@ -65,6 +67,7 @@ function initEpisodePageRoute() {
 
   initEpisodePage({ animeKey, ep: parsed.ep, title: parsed.raw });
   if (cat && titleEl) resolveCover({ animeKey, title: cat.name, year, mountEl: titleEl });
+  enhanceEpisodeNav(); // 單集頁：保留並改成水平按鈕（此頁無選集列，導覽有用）
 }
 
 // ---- 油猴選單：匯出 / 匯入 / 設定 ----
@@ -202,10 +205,13 @@ function main() {
   mountSidebarToggle();
 
   const type = getPageType();
+  // footer 置底：內容頁（首頁/分類/單集）都套，內容不足一屏時把 #colophon 推到視窗底，消除底端白邊。
+  if (type === 'list' || type === 'category' || type === 'episode') {
+    document.body.classList.add('a1p-stick-footer');
+  }
   if (type === 'category') initCategoryPage();
   else if (type === 'episode') initEpisodePageRoute();
   else if (type === 'list') {
-    document.body.classList.add('a1p-list-page'); // 只在首頁 / 啟用 footer 置底樣式
     if (getSettings().listThumbs) initListPage();
   }
 

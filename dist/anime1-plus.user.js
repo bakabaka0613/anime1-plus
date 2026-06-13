@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.20
+// @version      0.6.21
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -843,6 +843,10 @@
 .a1p-btn{cursor:pointer;border:1px solid #45464c;background:#26272c;color:#e8e8ea;
   border-radius:6px;padding:4px 10px;font-size:13px;margin-right:6px}
 .a1p-btn:hover{background:#303138}
+/* 播放器下方原生「全集連結／下一集／上一集」連結：單集頁→水平按鈕列；分類頁→隱藏 */
+.a1p-navrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.a1p-navrow .a1p-btn{margin-right:0;text-decoration:none;display:inline-block}
+.a1p-nav-hidden{display:none!important}
 .a1p-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .a1p-pick .a1p-opt{width:84px;cursor:pointer;text-align:center}
 .a1p-pick .a1p-opt img{width:84px;height:118px;object-fit:cover;border-radius:6px;background:#2a2a30}
@@ -965,13 +969,13 @@ body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#
 body.a1p-sidebar-collapsed #secondary,body.a1p-sidebar-collapsed .widget-area{display:none!important}
 body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
   width:100%!important;max-width:100%!important;flex:1 1 100%!important;float:none!important}
-/* footer 置底（僅首頁 /）：內容不足一屏（如搜尋無結果）時把 #colophon 推到視窗底，消除底端大片空白。
-   只改 #page 直接子層的排版，內部 float 兩欄佈局不受影響；其他頁面（分類/單集）維持原樣。*/
-body.a1p-list-page #page.site{display:flex;flex-direction:column;min-height:100vh}
+/* footer 置底（內容頁 首頁/分類/單集 皆套）：內容不足一屏時把 #colophon 推到視窗底，消除底端白邊。
+   只改 #page 直接子層的排版，內部 float 兩欄佈局不受影響。*/
+body.a1p-stick-footer #page.site{display:flex;flex-direction:column;min-height:100vh}
 /* width:100% 保住原本的滿版置中：site-content 帶 margin:auto，成為 flex 子項後
-   auto margin 會讓它收縮到內容寬度（無結果/廣告未載入時版型變窄）→ 用明確寬度抵銷，仍受 max-width 限制。*/
-body.a1p-list-page #page.site>#content{flex:1 0 auto;width:100%}
-body.a1p-list-page #page.site>#colophon{flex-shrink:0;margin-top:auto}
+   auto margin 會讓它收縮到內容寬度（版型變窄）→ 用明確寬度抵銷，仍受 max-width 限制。*/
+body.a1p-stick-footer #page.site>#content{flex:1 0 auto;width:100%}
+body.a1p-stick-footer #page.site>#colophon{flex-shrink:0;margin-top:auto}
 .a1p-last{display:flex;align-items:center;gap:10px;margin:8px 0;padding:8px 12px;
   background:#15233a;border:1px solid #2c4a6e;border-radius:8px;color:#d6e4ff;font-size:14px}
 .a1p-last b{color:#fff}
@@ -1133,9 +1137,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     return firstAnchor;
   }
   function appendPagination(bar) {
-    const links = document.querySelectorAll(
-      ".pagination a, .nav-links a, a.page-numbers, .wp-pagenavi a, .page-nav a"
-    );
+    const links = document.querySelectorAll(PAGINATION_SEL);
     if (!links.length) return;
     const sep = document.createElement("span");
     sep.className = "a1p-ep-label";
@@ -1153,18 +1155,37 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       bar.appendChild(link);
     });
   }
+  var PAGINATION_SEL = ".pagination a, .nav-links a, a.page-numbers, .wp-pagenavi a, .page-nav a";
   function collapseToSinglePlayer(animeKey) {
     injectStyles();
     if (document.querySelector(".a1p-ep-selector")) return;
     const articles = Array.from(document.querySelectorAll("article")).filter(
       (a) => a.querySelector(".entry-content") && a.querySelector(".entry-title")
     );
-    if (articles.length < 2) return;
-    const eps = articles.map((a) => ({
-      article: a,
-      ep: parseTitle(a.querySelector(".entry-title").textContent || "").ep
-    }));
-    eps.sort((a, b) => (a.ep ?? 1e9) - (b.ep ?? 1e9));
+    if (!articles.length) return;
+    if (articles.length < 2 && !document.querySelector(PAGINATION_SEL)) return;
+    const eps = articles.map((a) => {
+      const p = parseTitle(a.querySelector(".entry-title").textContent || "");
+      return { article: a, ep: p.ep, epRaw: p.epRaw, type: p.type };
+    });
+    const specialBase = (e) => e.epRaw || (e.type && e.type !== "TV" ? e.type : "") || "特";
+    eps.sort((a, b) => {
+      const na = a.ep ?? Infinity;
+      const nb = b.ep ?? Infinity;
+      if (na !== nb) return na - nb;
+      return specialBase(a).localeCompare(specialBase(b), void 0, { numeric: true });
+    });
+    const baseCount = {};
+    for (const e of eps) if (e.ep == null) baseCount[specialBase(e)] = (baseCount[specialBase(e)] || 0) + 1;
+    const baseUsed = {};
+    for (const e of eps) {
+      if (e.ep != null) {
+        e.label = String(e.ep);
+        continue;
+      }
+      const base = specialBase(e);
+      e.label = baseCount[base] > 1 ? `${base}${baseUsed[base] = (baseUsed[base] || 0) + 1}` : base;
+    }
     const watch = getAnimeWatch(animeKey);
     const bar = document.createElement("div");
     bar.className = "a1p-ep-selector";
@@ -1193,7 +1214,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const btn = document.createElement("button");
       btn.className = "a1p-ep-btn";
       btn.type = "button";
-      btn.textContent = e.ep != null ? String(e.ep) : "#";
+      btn.textContent = e.label;
       const rec = e.ep != null ? watch[e.ep] : null;
       if (rec && rec.done) btn.classList.add("a1p-ep-done-btn");
       btn.addEventListener("click", () => select(i));
@@ -1209,6 +1230,25 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (idx >= 0) defaultIdx = idx;
     }
     select(defaultIdx);
+  }
+  var NAV_LINK_TEXTS = ["全集連結", "上一集", "下一集", "上一話", "下一話"];
+  function enhanceEpisodeNav({ hide = false } = {}) {
+    injectStyles();
+    const rows = /* @__PURE__ */ new Set();
+    for (const a of document.querySelectorAll("a")) {
+      if (a.closest(".a1p-navrow, .a1p-nav-hidden")) continue;
+      if (!NAV_LINK_TEXTS.includes((a.textContent || "").trim())) continue;
+      if (!hide) a.classList.add("a1p-btn");
+      if (a.parentNode) rows.add(a.parentNode);
+    }
+    for (const p of rows) {
+      if (hide) {
+        p.classList.add("a1p-nav-hidden");
+      } else {
+        p.classList.add("a1p-navrow");
+        p.querySelectorAll("br").forEach((br) => br.remove());
+      }
+    }
   }
   function renderLastWatched(animeKey, mountEl) {
     injectStyles();
@@ -2729,6 +2769,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     renderLastWatched(animeKey, mountEl);
     resolveCover({ animeKey, title: animeName, year, mountEl });
     collapseToSinglePlayer(animeKey);
+    enhanceEpisodeNav({ hide: true });
     initCategoryPlayback(animeKey);
     const pageTitle = document.querySelector(".page-title");
     if (pageTitle) pageTitle.style.display = "none";
@@ -2743,6 +2784,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const year = cat ? cat.year : null;
     initEpisodePage({ animeKey, ep: parsed.ep, title: parsed.raw });
     if (cat && titleEl) resolveCover({ animeKey, title: cat.name, year, mountEl: titleEl });
+    enhanceEpisodeNav();
   }
   function downloadJson(text, filename) {
     const blob = new Blob([text], { type: "application/json" });
@@ -2868,10 +2910,12 @@ ${menu}`, "");
     mountTrackingPanel();
     mountSidebarToggle();
     const type = getPageType();
+    if (type === "list" || type === "category" || type === "episode") {
+      document.body.classList.add("a1p-stick-footer");
+    }
     if (type === "category") initCategoryPage();
     else if (type === "episode") initEpisodePageRoute();
     else if (type === "list") {
-      document.body.classList.add("a1p-list-page");
       if (getSettings().listThumbs) initListPage();
     }
     registerMenu();
