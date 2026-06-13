@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.27
+// @version      0.6.29
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -1024,10 +1024,49 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
 .a1p-ep-page:hover{background:#303138}
 .a1p-ep-hidden{display:none!important}
 .pagination,.wp-pagenavi{display:none!important} /* 原生上一頁/下一頁，已併入選集列 */
+/* 站方導覽列／底部注入的「插件原始碼」連結（沿用站方選單樣式，僅補圖示與間距）*/
+#primary-menu li.a1p-nav-link>a::before{content:"🧩"}
+/* 桌機（站方選單斷點 769px）：橫向選單只留 emoji，與原生連結同列平行 */
+@media screen and (min-width:769px){#primary-menu li.a1p-nav-link .a1p-nav-text{display:none}}
+/* 手機（≤768px，站方收合成「選單」）：emoji+字 */
+@media screen and (max-width:768px){#primary-menu li.a1p-nav-link .a1p-nav-text{margin-left:6px}}
+.a1p-foot-link{display:inline-block;margin-top:4px}
+.a1p-foot-link a::before{content:"🧩 "}
 `;
     const el = document.createElement("style");
     el.textContent = css;
     document.head.appendChild(el);
+  }
+  var PROJECT_URL = "https://github.com/bakabaka0613/anime1-plus";
+  var PROJECT_LABEL = "插件原始碼";
+  function injectProjectLinks() {
+    injectStyles();
+    const mkLink = (textClass) => {
+      const a = document.createElement("a");
+      a.href = PROJECT_URL;
+      a.target = "_blank";
+      a.rel = "noopener";
+      const txt = document.createElement("span");
+      if (textClass) txt.className = textClass;
+      txt.textContent = PROJECT_LABEL;
+      a.appendChild(txt);
+      return a;
+    };
+    const menu = document.getElementById("primary-menu");
+    if (menu && !menu.querySelector(".a1p-nav-link")) {
+      const li = document.createElement("li");
+      li.className = "menu-item a1p-nav-link";
+      li.appendChild(mkLink("a1p-nav-text"));
+      menu.appendChild(li);
+    }
+    const info = document.querySelector("#colophon .site-info");
+    if (info && !info.querySelector(".a1p-foot-link")) {
+      const span = document.createElement("span");
+      span.className = "a1p-foot-link";
+      span.appendChild(document.createElement("br"));
+      span.appendChild(mkLink());
+      info.appendChild(span);
+    }
   }
   function toastWrap() {
     let w = document.querySelector(".a1p-toast-wrap");
@@ -2985,6 +3024,7 @@ ${menu}`, "");
   function main() {
     migrateStored();
     injectStyles();
+    injectProjectLinks();
     mountTrackingPanel();
     mountSidebarToggle();
     const type = getPageType();

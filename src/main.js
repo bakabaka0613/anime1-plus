@@ -23,6 +23,7 @@ import {
   renderLastWatched,
   collapseToSinglePlayer,
   enhanceEpisodeNav,
+  injectProjectLinks,
   toast,
 } from './ui.js';
 import { exportAll, importAll, getSettings, setSettings, getSyncConfig, setSyncConfig, clearAnime, clearCover, clearCovers, clearWatch, clearSettings, clearAll, migrateStored } from './store.js';
@@ -201,6 +202,7 @@ function openClearMenu() {
 function main() {
   migrateStored(); // 一次性把舊格式（watch.url / meta.episodes[].url / 髒 title）轉精簡；放最前，後續 sync 才推精簡版上雲
   injectStyles();
+  injectProjectLinks(); // 站方頂部導覽列＋底部加上導向 GitHub 專案的連結（所有頁面）
   mountTrackingPanel();
   mountSidebarToggle();
 
