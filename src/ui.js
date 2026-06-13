@@ -27,6 +27,7 @@ export function injectStyles() {
 /* 播放器下方原生「全集連結／下一集／上一集」連結：單集頁→水平按鈕列；分類頁→隱藏 */
 .a1p-navrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
 .a1p-navrow .a1p-btn{margin-right:0;text-decoration:none;display:inline-block}
+.a1p-btn-disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
 .a1p-nav-hidden{display:none!important}
 .a1p-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .a1p-pick .a1p-opt{width:84px;cursor:pointer;text-align:center}
@@ -308,8 +309,8 @@ export function markCategoryEpisodes(animeKey) {
   titles.forEach((h) => {
     const a = h.querySelector('a[href]');
     if (!a) return;
-    const href = a.getAttribute('href') || '';
-    const m = href.match(/anime1\.me\/(\d+)/);
+    // 用解析後的絕對 a.href（相對 href 如「/28542」也能抓到 postId；getAttribute 取原始值會漏）
+    const m = (a.href || a.getAttribute('href') || '').match(/anime1\.me\/(\d+)/);
     if (!m) return;
     const postId = m[1];
     if (!firstAnchor) firstAnchor = h;
@@ -317,6 +318,9 @@ export function markCategoryEpisodes(animeKey) {
     if (parsed.ep != null) {
       episodes.push({ ep: parsed.ep, postId }); // url 由 postId 重建，不入庫
       maxEp = Math.max(maxEp, parsed.ep);
+    } else if (parsed.epRaw || parsed.type !== 'TV') {
+      // 特殊集（OVA/OAD/SP/劇場）也入庫，供 next/prev 跨到特殊集；無中括號者用 type 當標籤
+      episodes.push({ ep: null, epRaw: parsed.epRaw || parsed.type, postId });
     }
     const rec = parsed.ep != null ? getEpisode(animeKey, parsed.ep) : null;
     if (rec && rec.done) {
@@ -328,7 +332,21 @@ export function markCategoryEpisodes(animeKey) {
       h.parentNode.appendChild(bar);
     }
   });
-  if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: cleanTitle(document.title) });
+  if (episodes.length) {
+    // 跨分頁合併（分類頁會分頁，特殊集常在別頁）：與既有快取 union（依 postId 去重，當前頁覆蓋）。
+    // 整包替換會讓「只看 page 1」漏掉別頁的特殊集、或去到「只有 OVA 的分頁」把數字集與 maxEpSeen 洗掉。
+    const prev = getMeta(animeKey);
+    const byPost = new Map();
+    if (prev && Array.isArray(prev.episodes)) for (const e of prev.episodes) byPost.set(String(e.postId), e);
+    for (const e of episodes) byPost.set(String(e.postId), e);
+    const merged = [...byPost.values()];
+    const maxEpAll = merged.reduce((mx, e) => (typeof e.ep === 'number' ? Math.max(mx, e.ep) : mx), 0);
+    setMeta(animeKey, {
+      episodes: merged,
+      maxEpSeen: Math.max(maxEp, maxEpAll, (prev && prev.maxEpSeen) || 0), // 單調不退
+      title: cleanTitle(document.title),
+    });
+  }
   return firstAnchor;
 }
 
@@ -450,7 +468,47 @@ export function collapseToSinglePlayer(animeKey) {
 //   hide=false（單集頁）：把 <p> 變 flex 列、去 <br>、連結套 a1p-btn → 水平按鈕（單集頁沒有選集列，這些導覽有用）。
 //   hide=true（分類頁）：直接隱藏 <p>（插件已有選集列＋封面卡，「全集連結」指向當前分類、「下一集」皆冗餘）。
 const NAV_LINK_TEXTS = ['全集連結', '上一集', '下一集', '上一話', '下一話'];
-export function enhanceEpisodeNav({ hide = false } = {}) {
+
+// 依「選集列相同順序」排 meta.episodes：數字集升序在前，特殊集（ep null，如 OVA/OAD/SP）依 epRaw 在後。
+function orderedMetaEpisodes(list) {
+  return [...list].sort((a, b) => {
+    const na = typeof a.ep === 'number' ? a.ep : Infinity;
+    const nb = typeof b.ep === 'number' ? b.ep : Infinity;
+    if (na !== nb) return na - nb;
+    return String(a.epRaw || '').localeCompare(String(b.epRaw || ''), undefined, { numeric: true });
+  });
+}
+
+// 取目前集在統一排序清單中的位置與前/後相鄰 URL。目前集以 ep（數字集）或 postId（特殊集）辨識。
+// 涵蓋「最後一個數字集 → 第一個特殊集」，與選集列順序一致。回傳 { found, prev, next }；無快取或找不到目前集
+// → found:false（呼叫端據此保留原生「下一集」，不亂砍）。
+function episodeNeighbors(animeKey, ep, epRaw, postId) {
+  const meta = getMeta(animeKey);
+  const eps = meta && Array.isArray(meta.episodes) ? meta.episodes : [];
+  if (!eps.length) return { found: false, prev: null, next: null };
+  const list = orderedMetaEpisodes(eps);
+  // 定位目前集：數字集用 ep；特殊集（ep=null）用 epRaw（如「OVA」）；都對不上再退回 postId。
+  let idx = ep != null ? list.findIndex((e) => e.ep === ep) : -1;
+  if (idx < 0 && epRaw) idx = list.findIndex((e) => e.ep == null && String(e.epRaw) === String(epRaw));
+  if (idx < 0 && postId) idx = list.findIndex((e) => String(e.postId) === String(postId));
+  if (idx < 0) return { found: false, prev: null, next: null };
+  const urlAt = (i) => {
+    const t = list[i];
+    return t ? t.url || postUrl(t.postId) : null;
+  };
+  return { found: true, prev: urlAt(idx - 1), next: urlAt(idx + 1) };
+}
+
+// 建一顆導覽按鈕：有 href → 可點；無 → 灰色不可點（維持版面一致）。
+function navButton(text, href, cls) {
+  const a = document.createElement('a');
+  a.className = href ? `a1p-btn ${cls}` : `a1p-btn ${cls} a1p-btn-disabled`;
+  a.textContent = text;
+  if (href) a.href = href;
+  return a;
+}
+
+export function enhanceEpisodeNav({ hide = false, animeKey = null, ep = null, epRaw = null, postId = null } = {}) {
   injectStyles();
   const rows = new Set();
   for (const a of document.querySelectorAll('a')) {
@@ -468,6 +526,29 @@ export function enhanceEpisodeNav({ hide = false } = {}) {
       p.classList.add('a1p-navrow');
       p.querySelectorAll('br').forEach((br) => br.remove()); // 去掉垂直換行 → flex 水平並排
     }
+  }
+  if (hide || !animeKey) return;
+  // 單集頁：列首補「上一集」、列尾補「下一集」，成為 [上一集] 全集連結 下一集。永遠顯示（無則灰色不可點）。
+  // 有集數快取時，「下一集」改用快取的**統一順序**（含 OVA/OAD/SP）取代原生連結 → 最後一個數字集也能到特殊集
+  //（原生在最後一集常缺「下一集」，但選集列照順序排得出特殊集，這裡補齊一致）。無快取則保留原生「下一集」。
+  // found=true 代表目前集在快取清單中 → 用快取統一序（含特殊集）取代原生「下一集」，補上「上一集」。
+  // found=false（無快取/目前集不在清單，如剛上架）→ 保留原生「下一集」不動，只補一顆灰色「上一集」維持版面。
+  const { found, prev, next } = episodeNeighbors(animeKey, ep, epRaw, postId);
+  for (const p of rows) {
+    if (found) {
+      // 移除原生所有導覽連結（下一集 / 上一集 / OVA、下一集(SP) 之類特殊集捷徑），只留「全集連結」與我們自己的按鈕；
+      // 改用快取統一序的上/下一集（含特殊集、與選集列同序），避免那些裸連結夾在按鈕中間。
+      [...p.querySelectorAll('a')].forEach((a) => {
+        if (a.classList.contains('a1p-prev-ep') || a.classList.contains('a1p-next-ep')) return;
+        if ((a.textContent || '').trim() === '全集連結') return;
+        a.remove();
+      });
+      if (!p.querySelector('.a1p-next-ep')) p.appendChild(navButton('下一集', next, 'a1p-next-ep'));
+    }
+    const hasPrev =
+      p.querySelector('.a1p-prev-ep') ||
+      [...p.querySelectorAll('a')].some((a) => (a.textContent || '').trim() === '上一集');
+    if (!hasPrev) p.insertBefore(navButton('上一集', prev, 'a1p-prev-ep'), p.firstChild);
   }
 }
 

@@ -67,7 +67,7 @@ function initEpisodePageRoute() {
 
   initEpisodePage({ animeKey, ep: parsed.ep, title: parsed.raw });
   if (cat && titleEl) resolveCover({ animeKey, title: cat.name, year, mountEl: titleEl });
-  enhanceEpisodeNav(); // 單集頁：保留並改成水平按鈕（此頁無選集列，導覽有用）
+  enhanceEpisodeNav({ animeKey, ep: parsed.ep, epRaw: parsed.epRaw, postId: postIdFromPath() }); // 單集頁：水平按鈕＋快取統一序的上/下一集（含特殊集）
 }
 
 // ---- 油猴選單：匯出 / 匯入 / 設定 ----

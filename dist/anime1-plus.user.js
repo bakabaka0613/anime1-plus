@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.21
+// @version      0.6.25
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -420,6 +420,12 @@
     if (!d) return false;
     return d >= maxWatchedAt(animeWatch);
   }
+  function unionEpisodes(a, b) {
+    const byPost = /* @__PURE__ */ new Map();
+    for (const e of Array.isArray(a) ? a : []) if (e && e.postId != null) byPost.set(String(e.postId), e);
+    for (const e of Array.isArray(b) ? b : []) if (e && e.postId != null) byPost.set(String(e.postId), e);
+    return [...byPost.values()];
+  }
   function mergeSync(local, remote) {
     const lw = local && local.watch || {};
     const rw = remote && remote.watch || {};
@@ -449,7 +455,7 @@
       else {
         const am = typeof a.maxEpSeen === "number" ? a.maxEpSeen : -Infinity;
         const bm = typeof b.maxEpSeen === "number" ? b.maxEpSeen : -Infinity;
-        m = { ...bm >= am ? b : a, maxEpSeen: Math.max(am, bm) };
+        m = { ...bm >= am ? b : a, maxEpSeen: Math.max(am, bm), episodes: unionEpisodes(a.episodes, b.episodes) };
       }
       const dz = Math.max(a && a.deletedAt || 0, b && b.deletedAt || 0);
       if (dz && dz >= maxWatchedAt(watch[catId])) m.deletedAt = dz;
@@ -846,6 +852,7 @@
 /* 播放器下方原生「全集連結／下一集／上一集」連結：單集頁→水平按鈕列；分類頁→隱藏 */
 .a1p-navrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
 .a1p-navrow .a1p-btn{margin-right:0;text-decoration:none;display:inline-block}
+.a1p-btn-disabled{opacity:.4;cursor:not-allowed;pointer-events:none}
 .a1p-nav-hidden{display:none!important}
 .a1p-pick{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .a1p-pick .a1p-opt{width:84px;cursor:pointer;text-align:center}
@@ -1113,8 +1120,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     titles.forEach((h) => {
       const a = h.querySelector("a[href]");
       if (!a) return;
-      const href = a.getAttribute("href") || "";
-      const m = href.match(/anime1\.me\/(\d+)/);
+      const m = (a.href || a.getAttribute("href") || "").match(/anime1\.me\/(\d+)/);
       if (!m) return;
       const postId = m[1];
       if (!firstAnchor) firstAnchor = h;
@@ -1122,6 +1128,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (parsed.ep != null) {
         episodes.push({ ep: parsed.ep, postId });
         maxEp = Math.max(maxEp, parsed.ep);
+      } else if (parsed.epRaw || parsed.type !== "TV") {
+        episodes.push({ ep: null, epRaw: parsed.epRaw || parsed.type, postId });
       }
       const rec = parsed.ep != null ? getEpisode(animeKey, parsed.ep) : null;
       if (rec && rec.done) {
@@ -1133,7 +1141,20 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         h.parentNode.appendChild(bar);
       }
     });
-    if (episodes.length) setMeta(animeKey, { episodes, maxEpSeen: maxEp, title: cleanTitle(document.title) });
+    if (episodes.length) {
+      const prev = getMeta(animeKey);
+      const byPost = /* @__PURE__ */ new Map();
+      if (prev && Array.isArray(prev.episodes)) for (const e of prev.episodes) byPost.set(String(e.postId), e);
+      for (const e of episodes) byPost.set(String(e.postId), e);
+      const merged = [...byPost.values()];
+      const maxEpAll = merged.reduce((mx, e) => typeof e.ep === "number" ? Math.max(mx, e.ep) : mx, 0);
+      setMeta(animeKey, {
+        episodes: merged,
+        maxEpSeen: Math.max(maxEp, maxEpAll, prev && prev.maxEpSeen || 0),
+        // 單調不退
+        title: cleanTitle(document.title)
+      });
+    }
     return firstAnchor;
   }
   function appendPagination(bar) {
@@ -1232,7 +1253,37 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     select(defaultIdx);
   }
   var NAV_LINK_TEXTS = ["全集連結", "上一集", "下一集", "上一話", "下一話"];
-  function enhanceEpisodeNav({ hide = false } = {}) {
+  function orderedMetaEpisodes(list) {
+    return [...list].sort((a, b) => {
+      const na = typeof a.ep === "number" ? a.ep : Infinity;
+      const nb = typeof b.ep === "number" ? b.ep : Infinity;
+      if (na !== nb) return na - nb;
+      return String(a.epRaw || "").localeCompare(String(b.epRaw || ""), void 0, { numeric: true });
+    });
+  }
+  function episodeNeighbors(animeKey, ep, epRaw, postId) {
+    const meta = getMeta(animeKey);
+    const eps = meta && Array.isArray(meta.episodes) ? meta.episodes : [];
+    if (!eps.length) return { found: false, prev: null, next: null };
+    const list = orderedMetaEpisodes(eps);
+    let idx = ep != null ? list.findIndex((e) => e.ep === ep) : -1;
+    if (idx < 0 && epRaw) idx = list.findIndex((e) => e.ep == null && String(e.epRaw) === String(epRaw));
+    if (idx < 0 && postId) idx = list.findIndex((e) => String(e.postId) === String(postId));
+    if (idx < 0) return { found: false, prev: null, next: null };
+    const urlAt = (i) => {
+      const t = list[i];
+      return t ? t.url || postUrl(t.postId) : null;
+    };
+    return { found: true, prev: urlAt(idx - 1), next: urlAt(idx + 1) };
+  }
+  function navButton(text, href, cls) {
+    const a = document.createElement("a");
+    a.className = href ? `a1p-btn ${cls}` : `a1p-btn ${cls} a1p-btn-disabled`;
+    a.textContent = text;
+    if (href) a.href = href;
+    return a;
+  }
+  function enhanceEpisodeNav({ hide = false, animeKey = null, ep = null, epRaw = null, postId = null } = {}) {
     injectStyles();
     const rows = /* @__PURE__ */ new Set();
     for (const a of document.querySelectorAll("a")) {
@@ -1248,6 +1299,20 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         p.classList.add("a1p-navrow");
         p.querySelectorAll("br").forEach((br) => br.remove());
       }
+    }
+    if (hide || !animeKey) return;
+    const { found, prev, next } = episodeNeighbors(animeKey, ep, epRaw, postId);
+    for (const p of rows) {
+      if (found) {
+        [...p.querySelectorAll("a")].forEach((a) => {
+          if (a.classList.contains("a1p-prev-ep") || a.classList.contains("a1p-next-ep")) return;
+          if ((a.textContent || "").trim() === "全集連結") return;
+          a.remove();
+        });
+        if (!p.querySelector(".a1p-next-ep")) p.appendChild(navButton("下一集", next, "a1p-next-ep"));
+      }
+      const hasPrev = p.querySelector(".a1p-prev-ep") || [...p.querySelectorAll("a")].some((a) => (a.textContent || "").trim() === "上一集");
+      if (!hasPrev) p.insertBefore(navButton("上一集", prev, "a1p-prev-ep"), p.firstChild);
     }
   }
   function renderLastWatched(animeKey, mountEl) {
@@ -2784,7 +2849,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const year = cat ? cat.year : null;
     initEpisodePage({ animeKey, ep: parsed.ep, title: parsed.raw });
     if (cat && titleEl) resolveCover({ animeKey, title: cat.name, year, mountEl: titleEl });
-    enhanceEpisodeNav();
+    enhanceEpisodeNav({ animeKey, ep: parsed.ep, epRaw: parsed.epRaw, postId: postIdFromPath() });
   }
   function downloadJson(text, filename) {
     const blob = new Blob([text], { type: "application/json" });

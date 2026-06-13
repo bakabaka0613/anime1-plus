@@ -78,13 +78,16 @@ test('meta.maxEpSeen 取兩邊較大', () => {
   assert.equal(meta.a.maxEpSeen, 11);
 });
 
-test('meta.maxEpSeen：local 較大 → 取 local，title/episodes 採 maxEpSeen 大的一邊', () => {
-  const local = { watch: {}, meta: { a: { maxEpSeen: 12, title: 'L', episodes: [1, 2] } } };
-  const remote = { watch: {}, meta: { a: { maxEpSeen: 5, title: 'R', episodes: [9] } } };
+test('meta.maxEpSeen：local 較大 → 取 local 的 title；episodes 仍 union', () => {
+  const local = { watch: {}, meta: { a: { maxEpSeen: 12, title: 'L', episodes: [{ ep: 1, postId: 'p1' }, { ep: 2, postId: 'p2' }] } } };
+  const remote = { watch: {}, meta: { a: { maxEpSeen: 5, title: 'R', episodes: [{ ep: 9, postId: 'p9' }] } } };
   const { meta } = mergeSync(local, remote);
   assert.equal(meta.a.maxEpSeen, 12);
   assert.equal(meta.a.title, 'L');
-  assert.deepEqual(meta.a.episodes, [1, 2]);
+  assert.deepEqual(
+    meta.a.episodes.map((e) => e.ep).sort((x, y) => x - y),
+    [1, 2, 9],
+  );
 });
 
 test('meta catId 只在一邊 → 保留', () => {
@@ -210,4 +213,26 @@ test('既有 gistId 讀取時非 404 錯誤（401／網路）→ 往外丟，不
     /401/,
   );
   assert.equal(created, false);
+});
+
+test('mergeSync：meta.episodes 跨端 union（不互相覆蓋第一頁/特殊集）', () => {
+  // 兩端 maxEpSeen 相同，但各自只快取到不同分頁/特殊集 → 合併後應 union
+  const local = {
+    watch: {},
+    meta: { 'cat:1': { maxEpSeen: 12, title: 'A', episodes: [{ ep: 12, postId: 'p12' }, { ep: 11, postId: 'p11' }] } },
+  };
+  const remote = {
+    watch: {},
+    meta: { 'cat:1': { maxEpSeen: 12, title: 'A', episodes: [{ ep: 1, postId: 'p1' }, { ep: null, epRaw: 'OVA', postId: 'pova' }] } },
+  };
+  const { meta } = mergeSync(local, remote);
+  const eps = meta['cat:1'].episodes.map((e) => String(e.ep ?? e.epRaw)).sort();
+  assert.deepEqual(eps, ['1', '11', '12', 'OVA'].sort());
+});
+
+test('mergeSync：episodes union 依 postId 去重（同 postId 不重複）', () => {
+  const local = { watch: {}, meta: { 'cat:1': { maxEpSeen: 1, episodes: [{ ep: 1, postId: 'p1' }] } } };
+  const remote = { watch: {}, meta: { 'cat:1': { maxEpSeen: 1, episodes: [{ ep: 1, postId: 'p1' }] } } };
+  const { meta } = mergeSync(local, remote);
+  assert.equal(meta['cat:1'].episodes.length, 1);
 });

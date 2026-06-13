@@ -301,9 +301,17 @@ export function isDeleted(animeWatch, animeMeta) {
   return d >= maxWatchedAt(animeWatch);
 }
 
+// 合併兩份 meta.episodes（依 postId union，後者覆蓋前者）。供 mergeSync 用：episodes 不可二選一。
+function unionEpisodes(a, b) {
+  const byPost = new Map();
+  for (const e of Array.isArray(a) ? a : []) if (e && e.postId != null) byPost.set(String(e.postId), e);
+  for (const e of Array.isArray(b) ? b : []) if (e && e.postId != null) byPost.set(String(e.postId), e);
+  return [...byPost.values()];
+}
+
 // 多端同步合併（GitHub Gist）：把兩份 { watch, meta } 併成一份，回傳新物件（不改動輸入）。
 // watch 逐集（per-episode）按 watchedAt 取較新的一筆——絕不可整包覆蓋，否則兩端看不同集會互相清掉。
-// meta 的 maxEpSeen 取兩邊較大（單調遞增，是更新提醒的依據）；title/episodes 採 maxEpSeen 大的一邊。
+// meta 的 maxEpSeen 取兩邊較大；title 採 maxEpSeen 大的一邊；**episodes 依 postId union**（跨頁/跨端累積）。
 export function mergeSync(local, remote) {
   const lw = (local && local.watch) || {};
   const rw = (remote && remote.watch) || {};
@@ -335,7 +343,9 @@ export function mergeSync(local, remote) {
     else {
       const am = typeof a.maxEpSeen === 'number' ? a.maxEpSeen : -Infinity;
       const bm = typeof b.maxEpSeen === 'number' ? b.maxEpSeen : -Infinity;
-      m = { ...(bm >= am ? b : a), maxEpSeen: Math.max(am, bm) }; // title/episodes 隨 maxEpSeen 大的一邊
+      // title 隨 maxEpSeen 大的一邊；episodes 必須 **union**（依 postId），不可二選一——否則某端只有第一頁
+      // （或分頁/特殊集尚未快取）時，會把另一端已累積的整包覆蓋掉（多分頁/OVA 永遠補不齊的元兇之一）。
+      m = { ...(bm >= am ? b : a), maxEpSeen: Math.max(am, bm), episodes: unionEpisodes(a.episodes, b.episodes) };
     }
     // 刪除墓碑 deletedAt：取兩邊較新（刪除跨端生效）；但若合併後該番有更新的觀看
     // （watchedAt > deletedAt）則代表已復原 → 清掉墓碑，避免殘留與不一致。
