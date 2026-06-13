@@ -59,20 +59,43 @@ export function levenshtein(a, b) {
   return prev[b.length];
 }
 
-// 名稱相似度 0~1（正規化後）。一方包含另一方時給高分。
+// 最長共同子序列長度（字元層級）。供不同中文譯名比對：字多半相同但有插入/換序
+// （如「这是你与我的最后战场或是开创世界的圣战」對「你与我最后的战场亦或是世界起始的圣战」）。
+export function lcsLength(a, b) {
+  const m = a.length;
+  const n = b.length;
+  if (!m || !n) return 0;
+  let prev = new Array(n + 1).fill(0);
+  for (let i = 1; i <= m; i++) {
+    const cur = new Array(n + 1).fill(0);
+    for (let j = 1; j <= n; j++) {
+      cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// 名稱相似度 0~1（正規化後）。一方包含另一方時依長度比給分；另計 LCS 比例取較大。
 export function similarity(a, b) {
   const na = normalizeName(a);
   const nb = normalizeName(b);
   if (!na || !nb) return 0;
   if (na === nb) return 1;
+  let score;
   if (na.includes(nb) || nb.includes(na)) {
     // 依長度比例給分：短名被長名包含時給很低分，避免常見短詞（如「魔法」）虛高誤採。
     // 候選名長度需達 parsed 約 40% 才可能過 confident 的 name>=0.5 門檻。
     const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-    return 0.3 + 0.5 * ratio;
+    score = 0.3 + 0.5 * ratio;
+  } else {
+    const dist = levenshtein(na, nb);
+    score = 1 - dist / Math.max(na.length, nb.length);
   }
-  const dist = levenshtein(na, nb);
-  return 1 - dist / Math.max(na.length, nb.length);
+  // 不同譯名（字多半相同、僅插入/換序）→ LCS 比例更準。以較長者正規化：短名被長名包含時
+  // lcsRatio ≈ 長度比，不會虛高（避免「短名虛高誤採」回歸）；近長度的兩譯名才會拿到高分。
+  const lcsRatio = lcsLength(na, nb) / Math.max(na.length, nb.length);
+  return Math.max(score, lcsRatio);
 }
 
 // 解析首頁「集數」欄文字 → 目前最新「一般集數」。
@@ -150,6 +173,14 @@ export function isCaughtUp(episodes, metaEpisodes, newEps) {
   if (hasNextItem) return false; // 有下一集可看
   if (newEps) return false; // 有新集可看
   return true; // 看下一集無處可去、也沒有新集 → 已看完 / 已到最新進度
+}
+
+// 背景複查「待確認」封面的判定：未在 retryMs 內做過深比對者才需再試。
+// deepTried 為上次深比對仍配不到的時間戳；retryMs 預設 7 天（日後 Bangumi 新條目上架仍有機會補上）。
+export function shouldRecheck(cover, now, retryMs = 7 * 24 * 60 * 60 * 1000) {
+  if (!cover || !cover.tentative) return false;
+  if (cover.deepTried && now - cover.deepTried < retryMs) return false;
+  return true;
 }
 
 // 手動標記整部動畫為「已看完」：回傳新的 per-anime watch 物件（不改動輸入）。

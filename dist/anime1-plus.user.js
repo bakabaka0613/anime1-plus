@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.16
+// @version      0.6.17
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -149,6 +149,7 @@
     return CN_DIGIT[s] || null;
   }
   var ROMAN = { "Ⅱ": 2, "Ⅲ": 3, "Ⅳ": 4, "Ⅴ": 5, "Ⅵ": 6 };
+  var ROMAN_ASCII = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
   function extractEpisode(title) {
     const m = title.match(/\[([^\]]*)\]\s*$/);
     if (!m) return { ep: null, epRaw: null, rest: title.trim() };
@@ -174,21 +175,24 @@
       { re: /第\s*([一二三四五六七八九十\d]+)\s*[季期部]/, num: (m) => cnToNum(m[1]) },
       { re: /\b(\d+)\s*(?:st|nd|rd|th)\s+season\b/i, num: (m) => parseInt(m[1], 10) },
       { re: /\bseason\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
+      { re: /\bseason\s+(iii|ii|iv|vi|v|i)\b/i, num: (m) => ROMAN_ASCII[m[1].toLowerCase()] },
       { re: /\bpart\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
       { re: /\b(?:the\s+)?final\s+season\b/i, num: () => 2 },
       { re: /[ⅡⅢⅣⅤⅥ]/, num: (m) => ROMAN[m[0]] }
     ];
+    let seasonNum = 1;
+    let out = rest;
     for (const t of tries) {
-      const m = rest.match(t.re);
+      const m = out.match(t.re);
       if (!m) continue;
       const n = t.num(m);
-      if (!n) continue;
-      return { seasonNum: n, rest: rest.slice(0, m.index) + rest.slice(m.index + m[0].length) };
+      out = out.slice(0, m.index) + out.slice(m.index + m[0].length);
+      if (seasonNum === 1 && n) seasonNum = n;
     }
-    return { seasonNum: 1, rest };
+    return { seasonNum, rest: out };
   }
   function normalizeSpace(s) {
-    return s.replace(/\s+/g, " ").trim();
+    return s.replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
   }
   function parseTitle(raw) {
     const title = String(raw || "").trim();
@@ -243,17 +247,35 @@
     }
     return prev[b.length];
   }
+  function lcsLength(a, b) {
+    const m = a.length;
+    const n = b.length;
+    if (!m || !n) return 0;
+    let prev = new Array(n + 1).fill(0);
+    for (let i = 1; i <= m; i++) {
+      const cur = new Array(n + 1).fill(0);
+      for (let j = 1; j <= n; j++) {
+        cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+      }
+      prev = cur;
+    }
+    return prev[n];
+  }
   function similarity(a, b) {
     const na = normalizeName(a);
     const nb = normalizeName(b);
     if (!na || !nb) return 0;
     if (na === nb) return 1;
+    let score;
     if (na.includes(nb) || nb.includes(na)) {
       const ratio = Math.min(na.length, nb.length) / Math.max(na.length, nb.length);
-      return 0.3 + 0.5 * ratio;
+      score = 0.3 + 0.5 * ratio;
+    } else {
+      const dist = levenshtein(na, nb);
+      score = 1 - dist / Math.max(na.length, nb.length);
     }
-    const dist = levenshtein(na, nb);
-    return 1 - dist / Math.max(na.length, nb.length);
+    const lcsRatio = lcsLength(na, nb) / Math.max(na.length, nb.length);
+    return Math.max(score, lcsRatio);
   }
   function parseLatestEp(text) {
     const t = String(text || "").trim();
@@ -307,6 +329,11 @@
     const hasNextItem = Array.isArray(metaEpisodes) && metaEpisodes.some((it) => String(it.ep) === String(target.ep));
     if (hasNextItem) return false;
     if (newEps) return false;
+    return true;
+  }
+  function shouldRecheck(cover, now, retryMs = 7 * 24 * 60 * 60 * 1e3) {
+    if (!cover || !cover.tentative) return false;
+    if (cover.deepTried && now - cover.deepTried < retryMs) return false;
     return true;
   }
   function markEpisodesDone(animeWatch, metaEpisodes, now) {
@@ -501,6 +528,10 @@
     const root = loadRoot();
     root.covers[catId] = { ...data, ts: Date.now() };
     saveRoot(root);
+  }
+  function getTentativeCovers() {
+    const { covers } = loadRoot();
+    return Object.entries(covers).filter(([, c]) => c && c.tentative).map(([catId, c]) => ({ catId, ...c }));
   }
   function getAnimeWatch(catId) {
     const root = loadRoot();
@@ -1803,12 +1834,18 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const m = String(subject.date || subject.air_date || "").match(/(\d{4})/);
     return m ? parseInt(m[1], 10) : null;
   }
+  function leadTitleSegment(s) {
+    const seg = String(s || "").split(/[\s　:：]/)[0].trim();
+    return seg;
+  }
   function nameScore(parsed, subject) {
     const scores = [];
     for (const raw of [subject.name_cn, subject.name]) {
       if (!raw) continue;
       const candBase = parseTitle(raw).baseName || raw;
       scores.push(similarity(parsed.baseName, candBase));
+      const lead = leadTitleSegment(raw);
+      if (lead && lead !== raw) scores.push(similarity(parsed.baseName, parseTitle(lead).baseName || lead));
     }
     return scores.length ? Math.max(...scores) : 0;
   }
@@ -1843,6 +1880,44 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const margin = second ? best.score - second.score : Infinity;
     const confident = best.score >= CONFIDENT_SCORE && best.breakdown.name >= CONFIDENT_NAME && margin >= CONFIDENT_MARGIN;
     return { ranked, best, confident, needConfirm: !confident };
+  }
+
+  // src/coverQueue.js
+  var TIERS = ["visible", "tracking", "recheck"];
+  var GAP = { visible: 500, tracking: 500, recheck: 5e3 };
+  var MAX_RETRIES = 2;
+  var q = { visible: [], tracking: [], recheck: [] };
+  var pumping = false;
+  var lastRunAt = 0;
+  var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  function enqueue(tier, run) {
+    q[tier].push({ run, retries: 0 });
+    pump();
+  }
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    while (TIERS.some((t) => q[t].length)) {
+      const tier = TIERS.find((t) => q[t].length);
+      const wait = Math.max(0, GAP[tier] - (Date.now() - lastRunAt));
+      if (wait) {
+        await sleep(Math.min(wait, 250));
+        continue;
+      }
+      const job = q[tier].shift();
+      lastRunAt = Date.now();
+      let ok = false;
+      try {
+        ok = await job.run();
+      } catch {
+        ok = false;
+      }
+      if (!ok && job.retries < MAX_RETRIES) {
+        job.retries++;
+        q[tier].push(job);
+      }
+    }
+    pumping = false;
   }
 
   // src/cover.js
@@ -1915,11 +1990,48 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       showPicker(res.ranked);
     }
   }
+  var recheckQueued = /* @__PURE__ */ new Set();
+  var onCoverUpgrade = null;
+  function setCoverUpgradeHook(fn) {
+    onCoverUpgrade = fn;
+  }
+  function enqueueRecheck(catId) {
+    if (recheckQueued.has(catId)) return;
+    const cover = getCover(catId);
+    if (!shouldRecheck(cover, Date.now())) return;
+    recheckQueued.add(catId);
+    enqueue("recheck", async () => {
+      const meta = (await fetchLatestEpMap())[catId];
+      const title = meta && meta.name || cover.local || cover.name;
+      if (!title) return true;
+      const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true });
+      if (res.data) {
+        const data = { ...res.data, local: title };
+        setCover(catId, data);
+        if (onCoverUpgrade) onCoverUpgrade(catId, data);
+        console.info("[anime1-plus] 封面複查轉正：", title);
+      } else {
+        setCover(catId, { ...cover, deepTried: Date.now() });
+      }
+      return true;
+    });
+  }
+  async function recheckTentativeCovers({ orderHint } = {}) {
+    const now = Date.now();
+    let targets = getTentativeCovers().filter((c) => shouldRecheck(c, now) && !recheckQueued.has(c.catId));
+    if (!targets.length) return;
+    if (Array.isArray(orderHint) && orderHint.length) {
+      const rank = new Map(orderHint.map((k, i) => [k, i]));
+      const near = [];
+      const rest = [];
+      for (const c of targets) (rank.has(c.catId) ? near : rest).push(c);
+      near.sort((a, b) => rank.get(a.catId) - rank.get(b.catId));
+      targets = [...near, ...rest];
+    }
+    for (const c of targets) enqueueRecheck(c.catId);
+  }
 
   // src/list.js
-  var REQUEST_GAP_MS = 500;
-  var MAX_RETRIES = 2;
-  var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   var currentDt = null;
   var initialLen = null;
   function animeRef(a) {
@@ -1970,47 +2082,22 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   function initListPage() {
     injectStyles();
     const seen = /* @__PURE__ */ new WeakSet();
-    const queue = [];
-    const bgQueue = [];
-    let pumping = false;
     let trackingPrefetched = false;
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
           if (!e.isIntersecting) continue;
           io.unobserve(e.target);
-          if (e.target._a1pJob) {
-            queue.push(e.target._a1pJob);
-            pump();
-          }
+          if (e.target._a1pJob) enqueue("visible", () => resolve(e.target._a1pJob));
         }
       },
       { rootMargin: "400px" }
     );
-    async function pump() {
-      if (pumping) return;
-      pumping = true;
-      while (queue.length || bgQueue.length) {
-        const job = queue.length ? queue.shift() : bgQueue.shift();
-        let ok = false;
-        try {
-          ok = await resolve(job);
-        } catch {
-          ok = false;
-        }
-        if (!ok) {
-          job.retries = (job.retries || 0) + 1;
-          if (job.retries <= MAX_RETRIES) (job.prefetch ? bgQueue : queue).push(job);
-          else if (job.img) job.img.classList.add("a1p-thumb-unknown");
-        }
-        await sleep(REQUEST_GAP_MS);
-      }
-      pumping = false;
-    }
     async function resolve({ img, key, name, year }) {
       const paint = (data) => {
         if (!img) return;
         img.src = data.cover || "";
+        img.classList.remove("a1p-thumb-unknown");
         markCover(img, data);
         markRating(img, data);
       };
@@ -2033,9 +2120,11 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           data.local = name;
           setCover(key, data);
           paint(data);
+          enqueueRecheck(key);
         }
         return true;
       }
+      if (img) img.classList.add("a1p-thumb-unknown");
       return false;
     }
     async function prefetchTrackingCovers() {
@@ -2048,9 +2137,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         const info = infoMap[x.catId];
         const name = info && info.name || cleanTitle(x.meta && x.meta.title) || null;
         if (!name) continue;
-        bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
+        const job = { key: x.catId, name, year: info ? info.year : null };
+        enqueue("tracking", () => resolve(job));
       }
-      pump();
     }
     function enhanceRow(tr) {
       if (seen.has(tr)) return;
@@ -2091,6 +2180,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         img.src = cached.cover;
         markCover(img, cached);
         markRating(img, cached);
+        if (cached.tentative) enqueueRecheck(ref.key);
         return;
       }
       img._a1pJob = { img, key: ref.key, name, year: ref.year };
@@ -2108,6 +2198,36 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     mountToolbar();
     setupInfiniteScroll();
     prefetchTrackingCovers();
+  }
+  function viewportCatOrder() {
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const center = vh / 2;
+    const rows = [];
+    for (const row of document.querySelectorAll(".a1p-card-row")) {
+      const a = row.querySelector("a[href]");
+      if (!a) continue;
+      const ref = animeRef(a);
+      if (!ref) continue;
+      const r = row.getBoundingClientRect();
+      rows.push({ key: ref.key, dist: Math.abs((r.top + r.bottom) / 2 - center) });
+    }
+    rows.sort((p, q2) => p.dist - q2.dist);
+    return rows.map((x) => x.key);
+  }
+  function repaintCard(catId, data) {
+    for (const row of document.querySelectorAll(".a1p-card-row")) {
+      const a = row.querySelector("a[href]");
+      if (!a) continue;
+      const ref = animeRef(a);
+      if (!ref || ref.key !== catId) continue;
+      const img = row.querySelector("img.a1p-poster");
+      if (!img) return;
+      if (data.cover) img.src = data.cover;
+      img.classList.remove("a1p-thumb-unknown");
+      markCover(img, data);
+      markRating(img, data);
+      return;
+    }
   }
   function mountToolbar() {
     if (document.querySelector(".a1p-toolbar")) return;
@@ -2589,6 +2709,8 @@ ${menu}`, "");
     }
     registerMenu();
     initSync();
+    if (type === "list") setCoverUpgradeHook(repaintCard);
+    recheckTentativeCovers(type === "list" ? { orderHint: viewportCatOrder() } : {});
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", main);

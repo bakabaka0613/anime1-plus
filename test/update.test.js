@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring, isCaughtUp, markEpisodesDone, isDeleted } from '../src/util.js';
+import { parseLatestEp, pendingNewEpisodes, caughtUpNewEpisodes, resumeTarget, isAiring, isCaughtUp, markEpisodesDone, isDeleted, shouldRecheck } from '../src/util.js';
 
 // ---- parseLatestEp：解析首頁「集數」欄 → 最新一般集數 ----
 test('連載中(N) 取括號內集數', () => {
@@ -215,4 +215,23 @@ test('isDeleted：無 deletedAt / 無 meta → false', () => {
 });
 test('isDeleted：無任何觀看記錄但有 deletedAt → 已刪除（true）', () => {
   assert.equal(isDeleted({}, { deletedAt: 50 }), true);
+});
+
+// ---- shouldRecheck：背景複查「待確認」封面的判定 ----
+const DAY = 24 * 60 * 60 * 1000;
+test('shouldRecheck：非 tentative 封面 → 不複查', () => {
+  assert.equal(shouldRecheck({ tentative: false }, 0), false);
+  assert.equal(shouldRecheck({ cover: 'x' }, 0), false);
+});
+test('shouldRecheck：tentative 且從未深比對 → 複查', () => {
+  assert.equal(shouldRecheck({ tentative: true }, 1000), true);
+});
+test('shouldRecheck：deepTried 在 7 天內 → 不複查', () => {
+  assert.equal(shouldRecheck({ tentative: true, deepTried: 10 * DAY }, 13 * DAY), false);
+});
+test('shouldRecheck：deepTried 超過 7 天 → 再次複查', () => {
+  assert.equal(shouldRecheck({ tentative: true, deepTried: 10 * DAY }, 18 * DAY), true);
+});
+test('shouldRecheck：null/undefined → false', () => {
+  assert.equal(shouldRecheck(null, 0), false);
 });

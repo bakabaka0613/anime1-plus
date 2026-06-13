@@ -16,6 +16,7 @@ function cnToNum(s) {
 }
 
 const ROMAN = { Ⅱ: 2, Ⅲ: 3, Ⅳ: 4, Ⅴ: 5, Ⅵ: 6 };
+const ROMAN_ASCII = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
 
 // 抽尾端 [..] 集數標記。回傳 { ep, epRaw, rest }
 function extractEpisode(title) {
@@ -41,28 +42,37 @@ function extractType(rest, epRaw) {
   return { type, rest: cleaned };
 }
 
-// 抽季度並從字串移除季度標記。回傳 { seasonNum, rest }
+// 抽季度並從字串移除季度標記。回傳 { seasonNum, rest }。
+// 逐一套用各模式並移除（每模式至多一次）：標題可能同時出現多個季度標記
+// （如「… Season II ()（第2季）」同時有 ASCII 羅馬與中文季），需全部清掉以免污染 baseName。
 function extractSeason(rest) {
   const tries = [
     { re: /第\s*([一二三四五六七八九十\d]+)\s*[季期部]/, num: (m) => cnToNum(m[1]) },
     { re: /\b(\d+)\s*(?:st|nd|rd|th)\s+season\b/i, num: (m) => parseInt(m[1], 10) },
     { re: /\bseason\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
+    { re: /\bseason\s+(iii|ii|iv|vi|v|i)\b/i, num: (m) => ROMAN_ASCII[m[1].toLowerCase()] },
     { re: /\bpart\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
     { re: /\b(?:the\s+)?final\s+season\b/i, num: () => 2 },
     { re: /[ⅡⅢⅣⅤⅥ]/, num: (m) => ROMAN[m[0]] },
   ];
+  let seasonNum = 1;
+  let out = rest;
   for (const t of tries) {
-    const m = rest.match(t.re);
+    const m = out.match(t.re);
     if (!m) continue;
     const n = t.num(m);
-    if (!n) continue;
-    return { seasonNum: n, rest: rest.slice(0, m.index) + rest.slice(m.index + m[0].length) };
+    out = out.slice(0, m.index) + out.slice(m.index + m[0].length); // 移除該標記（即使 n 取不到也清掉雜訊）
+    if (seasonNum === 1 && n) seasonNum = n; // 第一個有效數字定季；後續僅清雜訊
   }
-  return { seasonNum: 1, rest };
+  return { seasonNum, rest: out };
 }
 
 function normalizeSpace(s) {
-  return s.replace(/\s+/g, ' ').trim();
+  // 季度標記移除後可能殘留空括號（如「Season II」與「（第2季）」併存清完剩「() （）」）→ 一併去掉
+  return s
+    .replace(/[（(]\s*[）)]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**

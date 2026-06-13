@@ -2,14 +2,11 @@
 // 封面沿用 lazy + 限流 + 重試；DataTables 的搜尋/分頁在表格外，仍正常運作。
 import { animeKeyFromCategoryPath, yearFromText } from './dom.js';
 import { getCover, setCover, getAnimeWatch, getInProgressList, getSettings, setSettings } from './store.js';
-import { lookupCover, toCoverData } from './cover.js';
+import { lookupCover, toCoverData, enqueueRecheck } from './cover.js';
 import { parseLatestEp, pendingNewEpisodes, cleanTitle } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
+import { enqueue } from './coverQueue.js';
 import { injectStyles } from './ui.js';
-
-const REQUEST_GAP_MS = 500; // 兩次 Bangumi 搜尋間隔，避免限流
-const MAX_RETRIES = 2;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let currentDt = null; // DataTables 實例（供切換時恢復原始分頁）
 let initialLen = null; // 原始每頁筆數
@@ -70,51 +67,26 @@ function markRating(img, data) {
 export function initListPage() {
   injectStyles();
   const seen = new WeakSet();
-  const queue = []; // 可見海報（高優先）
-  const bgQueue = []; // 追番清單補抓封面（低優先，僅在可見海報排空後處理）
-  let pumping = false;
   let trackingPrefetched = false;
 
+  // 可見海報排入共享佇列的 visible 層（高優先）；限流/重試由 coverQueue 統一處理。
   const io = new IntersectionObserver(
     (entries) => {
       for (const e of entries) {
         if (!e.isIntersecting) continue;
         io.unobserve(e.target);
-        if (e.target._a1pJob) {
-          queue.push(e.target._a1pJob);
-          pump();
-        }
+        if (e.target._a1pJob) enqueue('visible', () => resolve(e.target._a1pJob));
       }
     },
     { rootMargin: '400px' },
   );
-
-  async function pump() {
-    if (pumping) return;
-    pumping = true;
-    while (queue.length || bgQueue.length) {
-      const job = queue.length ? queue.shift() : bgQueue.shift(); // 可見海報永遠優先於補抓
-      let ok = false;
-      try {
-        ok = await resolve(job);
-      } catch {
-        ok = false;
-      }
-      if (!ok) {
-        job.retries = (job.retries || 0) + 1;
-        if (job.retries <= MAX_RETRIES) (job.prefetch ? bgQueue : queue).push(job);
-        else if (job.img) job.img.classList.add('a1p-thumb-unknown');
-      }
-      await sleep(REQUEST_GAP_MS);
-    }
-    pumping = false;
-  }
 
   // job 可能無 img（追番清單補抓：只寫入封面快取，不渲染畫面）
   async function resolve({ img, key, name, year }) {
     const paint = (data) => {
       if (!img) return; // 補抓 job：略過畫面渲染
       img.src = data.cover || '';
+      img.classList.remove('a1p-thumb-unknown'); // 前次失敗占位 → 抓到後清掉
       markCover(img, data);
       markRating(img, data);
     };
@@ -140,14 +112,16 @@ export function initListPage() {
         data.local = name; // anime1 繁體原名
         setCover(key, data);
         paint(data);
+        enqueueRecheck(key); // 本 session 新產生的待確認 → 背景深比對複查（清除封面後重載也涵蓋）
       }
       return true;
     }
-    return false; // 完全無可用封面 → 交給 retry，用完標 unknown 占位
+    if (img) img.classList.add('a1p-thumb-unknown'); // 完全無可用封面 → 標占位（重試成功會被 paint 清掉）
+    return false; // 交給 coverQueue 重試
   }
 
   // 追番清單中沒有封面的番（多端同步後新端常見：只同步進度、封面各端自抓）→
-  // 排進低優先 bgQueue，等可見海報抓完後接著補抓，下次開追番面板就有封面。
+  // 排進共享佇列的 tracking 層（低於可見海報），等可見海報抓完後接著補抓，下次開追番面板就有封面。
   async function prefetchTrackingCovers() {
     if (trackingPrefetched) return;
     trackingPrefetched = true;
@@ -158,9 +132,9 @@ export function initListPage() {
       const info = infoMap[x.catId];
       const name = (info && info.name) || cleanTitle(x.meta && x.meta.title) || null;
       if (!name) continue; // 無名稱可查 → 略過（之後進該動畫頁時仍會抓）
-      bgQueue.push({ key: x.catId, name, year: info ? info.year : null, prefetch: true });
+      const job = { key: x.catId, name, year: info ? info.year : null };
+      enqueue('tracking', () => resolve(job));
     }
-    pump();
   }
 
   // 把單一 table row 變成卡片：在名稱格最前插入封面圖
@@ -208,6 +182,7 @@ export function initListPage() {
       img.src = cached.cover;
       markCover(img, cached);
       markRating(img, cached);
+      if (cached.tentative) enqueueRecheck(ref.key); // 待確認 → 背景深比對複查（隨捲動渲染 → 天然就近）
       return;
     }
     img._a1pJob = { img, key: ref.key, name, year: ref.year };
@@ -230,7 +205,44 @@ export function initListPage() {
 
   mountToolbar();
   setupInfiniteScroll();
-  prefetchTrackingCovers(); // 可見海報抓完後接著補抓追番清單缺的封面（bgQueue 低優先，不擋可見列表）
+  prefetchTrackingCovers(); // 可見海報抓完後接著補抓追番清單缺的封面（tracking 層低優先，不擋可見列表）
+}
+
+// 目前已渲染的卡片 catId，依與視窗中心的垂直距離排序（最近者在前）。
+// 供第三層「待確認複查」就近優先（方案 B）：先複查使用者眼前附近的，其餘照舊接在後面。
+// 非列表頁（無卡片）或列表增強關閉時回傳 []。key 與封面快取／getTentativeCovers 同一空間（animeRef）。
+export function viewportCatOrder() {
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  const center = vh / 2;
+  const rows = [];
+  for (const row of document.querySelectorAll('.a1p-card-row')) {
+    const a = row.querySelector('a[href]');
+    if (!a) continue;
+    const ref = animeRef(a);
+    if (!ref) continue;
+    const r = row.getBoundingClientRect();
+    rows.push({ key: ref.key, dist: Math.abs((r.top + r.bottom) / 2 - center) });
+  }
+  rows.sort((p, q) => p.dist - q.dist);
+  return rows.map((x) => x.key);
+}
+
+// 背景複查把某待確認封面升級轉正後，就地重繪眼前那張卡片：換封面、移除「待確認」角標、補評分。
+// 不必重整即可看到結果。卡片不在 DOM（未渲染/已換頁）→ 無事發生。
+export function repaintCard(catId, data) {
+  for (const row of document.querySelectorAll('.a1p-card-row')) {
+    const a = row.querySelector('a[href]');
+    if (!a) continue;
+    const ref = animeRef(a);
+    if (!ref || ref.key !== catId) continue;
+    const img = row.querySelector('img.a1p-poster');
+    if (!img) return;
+    if (data.cover) img.src = data.cover;
+    img.classList.remove('a1p-thumb-unknown');
+    markCover(img, data); // data 已非 tentative → 移除「待確認」角標
+    markRating(img, data);
+    return;
+  }
 }
 
 // 懸浮工具列：搜尋（移入原生 filter）+ 卡片/列表切換 + 卡片大小

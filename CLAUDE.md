@@ -18,9 +18,10 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 | File | Responsibility |
 | --- | --- |
 | `parse.js` | Title parsing (season / episode no. / type: 劇場版/OVA/第X季/Ⅱ/2nd Season) |
-| `match.js` | Bangumi candidate scoring (name similarity + year + season, 3-axis) |
+| `match.js` | Bangumi candidate scoring (name similarity + year + season, 3-axis); main-title-segment match |
 | `bangumi.js` | Bangumi search via `GM_xmlhttpRequest` (rate-limited → cached) |
-| `cover.js` | Cover lookup/render orchestration |
+| `cover.js` | Cover lookup/render orchestration + background `tentative` recheck |
+| `coverQueue.js` | Shared serial cover-fetch scheduler: 3 priority tiers, per-tier rate-limit, preempt |
 | `store.js` | GM storage: progress/settings/export-import + sync config & merge-apply |
 | `sync.js` | Multi-device sync via a private GitHub Gist (pull-merge-push); orchestration only |
 | `progress.js` | Watch recording, resume, auto-next-episode, keyboard shortcuts |
@@ -34,11 +35,29 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 ## Conventions & gotchas
 
 - **Anime key = stable `categoryID`** — category page / single-episode page / list page all share one record.
+- **Shared cover-fetch queue** (`coverQueue.js`): ONE serial scheduler (concurrency 1) shared across all
+  cover fetching so the Bangumi rate-limit actually holds. 3 priority tiers, each with its own min-gap:
+  `visible` (home posters in viewport, 500ms) > `tracking` (tracking-list cover prefetch, 500ms) >
+  `recheck` (background `tentative` re-match, 5000ms). `enqueue(tier, run)`; `run` returns a boolean
+  (false → retried ≤ MAX_RETRIES). Pump picks the highest non-empty tier and sleeps `min(gap,250)` in
+  chunks so a newly-arrived higher-priority job **preempts** a low-tier's long wait (a viewport poster
+  never waits behind recheck's 5s). `lastRunAt` is global → spacing is enforced across tiers.
 - Covers are NOT synced (only watch+meta are), so a freshly-synced device has cover-less tracking rows.
   `list.js` fixes this: after the visible poster queue drains it prefetches covers for tracking-list anime
-  lacking one, via a low-priority `bgQueue` (visible posters always win). Titles/years come from
-  `fetchLatestEpMap` (now carries `name`/`year`), falling back to `meta.title`. Self-limiting — once cached,
+  lacking one, via the `tracking` tier (visible posters always win). Titles/years come from
+  `fetchLatestEpMap` (carries `name`/`year`), falling back to `meta.title`. Self-limiting — once cached,
   `getInProgressList` no longer reports them as missing.
+- **Background recheck of "待確認" covers** (`recheckTentativeCovers` / `enqueueRecheck` in `cover.js`):
+  list-page tentatives are created with the cheap `deep:false` lookup (no alias match) so many stay
+  uncertain. A low-priority `recheck` tier re-runs the SAME deep match the category page does
+  (`lookupCover deep:true`, alias-aware); on a confident hit it upgrades the record (drops `tentative`)
+  and **repaints the live card** via the `setCoverUpgradeHook` (= `list.js` `repaintCard`, finds card by
+  catId) — no reload needed. On a miss it stamps `cover.deepTried = now`; `shouldRecheck` (`util.js`)
+  skips re-trying within 7 days (cleared by `clearCover` since it wipes the record). **Render-driven**:
+  `list.js` calls `enqueueRecheck` when a tentative card renders OR is freshly created this session — a
+  one-time `main()` snapshot alone misses session-new tentatives (e.g. after "clear this cover" → reload).
+  Module-level `recheckQueued` Set dedups; `main()` also does a full-storage sweep (viewport-ordered via
+  `viewportCatOrder()`) as a backstop. Runs on ALL page types.
 - Inline player on the **category page** is the real watch flow: identify episode via the player's
   `data-apireq`; single-episode page `/{postId}` also supported. Non-native `<video>` → silently skip
   progress (don't error).
@@ -74,7 +93,24 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   is present. When `postId` can't be derived (e.g. an old `?cat=` URL) the `url` is kept as a fallback.
 - zh-Hant→zh-Hans (OpenCC, jsdelivr `@require`) before Bangumi search (its index is mostly Simplified);
   if name/name_cn don't match, fall back to comparing Bangumi aliases. Cover card main title uses the
-  **original anime1 Traditional name** (Bangumi Chinese is often Simplified).
+  **original anime1 Traditional name** (Bangumi Chinese is often Simplified). **OpenCC is absent under
+  `node --test`** (`toSimplified` is a no-op there) → write Traditional-vs-Simplified matching tests with
+  ALREADY-Simplified inputs; the zh-Hant→Hans step is the browser's job, not the unit's.
+- **Name matching is precision-sensitive — don't blanket-loosen `similarity`.** Two real failure modes,
+  each fixed at the right layer: (1) Bangumi name = `主名⎵副標` with a long subtitle (e.g. anime1
+  「判处勇者刑」 vs `判处勇者刑 惩罚勇者9004队刑务纪录`) → `match.js` `nameScore` also compares the
+  candidate's **leading title segment** (split on space/colon via `leadTitleSegment`); only fires when a
+  separator-delimited subtitle exists, so it can't inflate arbitrary containment. (2) Different Chinese
+  translation of the same work (字 mostly shared, reordered/inserted) → `util.js` `similarity` also
+  computes an **LCS ratio** (`lcsLength / maxLen`) and takes the max; normalizing by the LONGER string
+  means a short name contained in a long one gets `≈ length-ratio` (NOT inflated) — only near-equal-length
+  translations score high. A past regression came from a length-based containment boost that ignored the
+  ratio → it false-confidently mis-matched and was reverted; keep guard tests
+  (`短主名被無分隔長名包含 → 需確認`). Pure `levenshtein`/`lcsLength`/`similarity` live in `util.js`.
+- `parse.js` `extractSeason` removes **every** season marker (iterates all patterns, each once), not just
+  the first — titles can carry redundant markers (`Season II ()（第2季）`); handles ASCII roman
+  (`Season II/III/…`) plus the existing CJK/unicode-roman forms; `normalizeSpace` strips leftover empty
+  `()`/`（）`. Keeps `baseName` clean for both search and similarity.
 - Confidence-low covers: still show the image but add a "待確認" corner badge to nudge a manual pick.
 
 ## TDD

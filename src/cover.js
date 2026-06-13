@@ -2,8 +2,10 @@
 import { searchAnime, coverUrl, getSubjectAliases } from './bangumi.js';
 import { rankCandidates } from './match.js';
 import { parseTitle } from './parse.js';
-import { similarity, toSimplified } from './util.js';
-import { getCover, setCover } from './store.js';
+import { similarity, toSimplified, shouldRecheck } from './util.js';
+import { getCover, setCover, getTentativeCovers } from './store.js';
+import { fetchLatestEpMap } from './animelist.js';
+import { enqueue } from './coverQueue.js';
 import { renderCoverCard, renderCoverPicker } from './ui.js';
 
 // 深度比對：用「Bangumi 搜尋 relevance 前幾名」（非我重排後）抓別名，若與解析名高度相符則採用。
@@ -91,4 +93,58 @@ export async function resolveCover({ animeKey, title, year, mountEl }) {
   } else {
     showPicker(res.ranked);
   }
+}
+
+const recheckQueued = new Set(); // 本 session 已排入複查的 catId（去重；含失敗者，當次不重排）
+let onCoverUpgrade = null; // 升級轉正後的重繪 hook（列表頁設為 repaintCard）
+
+// 由頁面模組註冊「升級轉正後就地重繪」的 hook。複查 job 在執行時讀取，故設定時機晚於排入也無妨。
+export function setCoverUpgradeHook(fn) {
+  onCoverUpgrade = fn;
+}
+
+/**
+ * 把單一「待確認」(tentative) 封面排入背景深比對複查（共享佇列最低優先層，5s/部）：
+ * 重跑與分類頁相同的 deep:true 別名比對，配到就升級轉正（脫 tentative）並即時重繪、
+ * 仍配不到就標 deepTried（7 天內不重試）。去重 + shouldRecheck 雙重守門。
+ */
+export function enqueueRecheck(catId) {
+  if (recheckQueued.has(catId)) return;
+  const cover = getCover(catId);
+  if (!shouldRecheck(cover, Date.now())) return;
+  recheckQueued.add(catId);
+  enqueue('recheck', async () => {
+    const meta = (await fetchLatestEpMap())[catId]; // 權威繁體名/年份（已 5 分快取，cat:{id} keyed）
+    const title = (meta && meta.name) || cover.local || cover.name;
+    if (!title) return true; // 無名可查 → 視為完成、不重試
+    const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true });
+    if (res.data) {
+      const data = { ...res.data, local: title };
+      setCover(catId, data); // 升級轉正（脫 tentative）
+      if (onCoverUpgrade) onCoverUpgrade(catId, data); // 即時重繪眼前卡片
+      console.info('[anime1-plus] 封面複查轉正：', title);
+    } else {
+      setCover(catId, { ...cover, deepTried: Date.now() }); // 仍配不到 → 7 天內不重試
+    }
+    return true;
+  });
+}
+
+/**
+ * 全量背景複查：掃 storage 中所有「待確認」封面，逐一排入 enqueueRecheck（背景補底，列表頁渲染驅動
+ * 已涵蓋眼前/捲到的，這裡補上尚未渲染的）。orderHint（viewportCatOrder()）讓就近者排前面（方案 B）。
+ */
+export async function recheckTentativeCovers({ orderHint } = {}) {
+  const now = Date.now();
+  let targets = getTentativeCovers().filter((c) => shouldRecheck(c, now) && !recheckQueued.has(c.catId));
+  if (!targets.length) return;
+  if (Array.isArray(orderHint) && orderHint.length) {
+    const rank = new Map(orderHint.map((k, i) => [k, i]));
+    const near = [];
+    const rest = [];
+    for (const c of targets) (rank.has(c.catId) ? near : rest).push(c); // rest 保持原插入順序(穩定)
+    near.sort((a, b) => rank.get(a.catId) - rank.get(b.catId));
+    targets = [...near, ...rest];
+  }
+  for (const c of targets) enqueueRecheck(c.catId);
 }

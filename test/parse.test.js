@@ -117,6 +117,13 @@ test('動畫名本身（無集數標記）解析為完整 baseName', () => {
   assert.equal(r.ep, null);
 });
 
+test('重複季度標記（Season II 與 第2季併存）全部清除、不殘留空括號', () => {
+  const r = parseTitle('這是妳與我的最後戰場，或是開創世界的聖戰 Season II ()（第2季）');
+  assert.equal(r.seasonNum, 2);
+  assert.equal(r.baseName, '這是妳與我的最後戰場，或是開創世界的聖戰');
+  assert.ok(!/season|ii|（|）|\(|\)/i.test(r.baseName));
+});
+
 test('Final Season 視為續作（seasonNum > 1）', () => {
   const r = parseTitle('進擊的巨人 The Final Season [01]');
   assert.ok(r.seasonNum > 1);

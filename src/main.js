@@ -13,8 +13,8 @@ import {
 } from './dom.js';
 import { parseTitle } from './parse.js';
 import { initEpisodePage, initCategoryPlayback } from './progress.js';
-import { resolveCover } from './cover.js';
-import { initListPage } from './list.js';
+import { resolveCover, recheckTentativeCovers, setCoverUpgradeHook } from './cover.js';
+import { initListPage, viewportCatOrder, repaintCard } from './list.js';
 import {
   injectStyles,
   markCategoryEpisodes,
@@ -211,6 +211,10 @@ function main() {
 
   registerMenu(); // 放最後：分派時已設定 currentAnimeKey，清除選單才能取到
   initSync(); // 訂閱資料變動 + 啟動時拉一次遠端（已設定才會動）
+  // 背景複查「待確認」封面（最低優先，與 list 佇列共用限流；三頁皆跑）。
+  // 列表頁：註冊 repaintCard → 升級後即時重繪卡片；全量補底以視窗就近排序（方案 B，渲染驅動已涵蓋眼前）。
+  if (type === 'list') setCoverUpgradeHook(repaintCard);
+  recheckTentativeCovers(type === 'list' ? { orderHint: viewportCatOrder() } : {});
 }
 
 if (document.readyState === 'loading') {

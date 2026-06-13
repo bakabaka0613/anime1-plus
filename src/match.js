@@ -16,13 +16,23 @@ function subjectYear(subject) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-// 取候選的中日文名，各自去季度後與 parsed.baseName 比，取較高相似度。
+// Bangumi 中文名常為「主名⎵副標」（如「判处勇者刑 惩罚勇者9004队刑务纪录」），以空白或冒號分隔。
+// 取分隔前的主名段，供 nameScore 額外比對，避免長副標把相似度稀釋（精準：只在真有分隔副標時生效）。
+function leadTitleSegment(s) {
+  const seg = String(s || '').split(/[\s　:：]/)[0].trim();
+  return seg;
+}
+
+// 取候選的中日文名，各自去季度後與 parsed.baseName 比，取較高相似度；
+// 並額外比對「主名段」（分隔副標前），讓主名相符但 Bangumi 多了長副標者不致被稀釋而漏採。
 function nameScore(parsed, subject) {
   const scores = [];
   for (const raw of [subject.name_cn, subject.name]) {
     if (!raw) continue;
     const candBase = parseTitle(raw).baseName || raw;
     scores.push(similarity(parsed.baseName, candBase));
+    const lead = leadTitleSegment(raw);
+    if (lead && lead !== raw) scores.push(similarity(parsed.baseName, parseTitle(lead).baseName || lead));
   }
   return scores.length ? Math.max(...scores) : 0;
 }

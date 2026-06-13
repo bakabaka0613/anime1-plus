@@ -61,6 +61,13 @@ export function setCover(catId, data) {
   root.covers[catId] = { ...data, ts: Date.now() };
   saveRoot(root);
 }
+// 所有「待確認」（低信心暫定）封面，供背景深比對複查。回傳 [{ catId, ...cover }]。
+export function getTentativeCovers() {
+  const { covers } = loadRoot();
+  return Object.entries(covers)
+    .filter(([, c]) => c && c.tentative)
+    .map(([catId, c]) => ({ catId, ...c }));
+}
 
 // ---- 觀看記錄 ----
 // 已軟刪除（墓碑）的動畫在各處（追番清單、首頁 +N、分類頁標記、續播）一律視為「未追蹤」→
