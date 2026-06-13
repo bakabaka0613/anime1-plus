@@ -435,3 +435,21 @@ export function formatTime(sec) {
   const pad = (n) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }
+
+// animelist.json 的 year(r[3])/season(r[4]) → 該番所屬的年+季桶陣列，如 ['2020秋','2022冬']。
+// 兩欄都可能是跨季/跨年的斜線多值；anime1 在兩欄皆按播出序排，故位置配對可靠。
+// 跨季番屬於它列出的「每一個」桶（多桶歸屬）。
+export function seasonBuckets(r3, r4) {
+  const s = String(r4 || '');
+  // 形態1：r4 自帶年份前綴（2020秋/2022冬、2025冬/2025夏/2026春）→ 逐段直接解析，最準
+  const prefixed = [...s.matchAll(/(\d{4})\s*([春夏秋冬])/g)];
+  if (prefixed.length) return prefixed.map((m) => m[1] + m[2]);
+  // 形態2：r4 只有季 → 配 r3 的年
+  const seasons = s.match(/[春夏秋冬]/g) || [];
+  const years = [];
+  for (const y of String(r3 || '').match(/\d{4}/g) || []) if (!years.includes(y)) years.push(y);
+  if (!seasons.length || !years.length) return [];
+  if (years.length === seasons.length) return seasons.map((se, i) => years[i] + se); // 位置配對（兩欄皆按播出序）
+  if (years.length === 1) return seasons.map((se) => years[0] + se); // 同年多季
+  return seasons.map((se) => years[0] + se); // 季<年（run-over）→ 取首年
+}

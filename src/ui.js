@@ -124,6 +124,31 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
 .a1p-tb-btn:hover{background:#303138}
 .a1p-tb-size{display:flex;align-items:center;gap:6px;height:32px;font-size:12px;color:#9aa0a6;white-space:nowrap}
 body:not(.a1p-grid-on) .a1p-tb-size{display:none} /* 原始列表模式不需大小調整 */
+/* 年+季桶篩選列：|(✕)‹ 桶 ›|。✕ 在捲動區外最左，頭尾 ‹› 為邊緣淡出指示（不可按）。 */
+.a1p-tb-bucketwrap{flex:1 1 100%;display:flex;align-items:center;gap:6px;min-width:0}
+.a1p-tb-scroll{position:relative;flex:1 1 auto;min-width:0;display:flex}
+.a1p-tb-buckets{flex:1 1 auto;min-width:0;display:flex;gap:6px;align-items:center;overflow-x:auto;
+  scrollbar-width:none} /* 隱藏滑條，改用頭尾淡出提示 */
+.a1p-tb-buckets::-webkit-scrollbar{display:none}
+/* 頭尾淡出：絕對覆蓋邊緣，漸層讓 chip 淡入背景 + 小而淡的 ‹›；不可按、點擊穿透到下方 chip。
+   只在該方向還能捲時 .show 淡入。背景色對齊工具列底色 #0d0d10。 */
+.a1p-tb-arrow{position:absolute;top:0;bottom:0;width:28px;pointer-events:none;opacity:0;
+  display:flex;align-items:center;color:#c2c7cf;font-size:15px;line-height:1;transition:opacity .15s}
+.a1p-tb-arrow.show{opacity:1}
+.a1p-tb-arrow.l{left:0;justify-content:flex-start;padding-left:1px;
+  background:linear-gradient(to right,#0d0d10 35%,transparent)}
+.a1p-tb-arrow.r{right:0;justify-content:flex-end;padding-right:1px;
+  background:linear-gradient(to left,#0d0d10 35%,transparent)}
+.a1p-bucket-chip{flex:0 0 auto;cursor:pointer;border:1px solid #45464c;background:#26272c;color:#cfd2d6;
+  border-radius:14px;height:26px;padding:0 12px;font-size:12px;white-space:nowrap}
+.a1p-bucket-chip:hover{background:#303138}
+.a1p-bucket-chip[aria-pressed="true"]{background:#2f6fed;border-color:#2f6fed;color:#fff}
+/* 清除鈕：純 ✕ 緊湊方鈕，在捲動區外最左（✕ 隱藏時 flex gap 不佔位） */
+.a1p-bucket-clear{flex:0 0 auto;cursor:pointer;
+  border:1px solid #5a3a3a;background:#2c2326;color:#e0a3a3;border-radius:13px;
+  width:26px;height:26px;padding:0;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.a1p-bucket-clear:hover{background:#3a2c2f}
+.a1p-bucket-clear[hidden]{display:none}
 /* 窄螢幕：搜尋框獨佔一行，卡片大小滑條與「原始列表」按鈕換到第二行並靠右，避免擠壓 */
 @media (max-width:640px){.a1p-tb-search{flex-basis:100%}.a1p-toolbar{justify-content:flex-end}}
 body.a1p-grid-on .a1p-grid-table thead{display:none}

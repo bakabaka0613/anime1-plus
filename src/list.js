@@ -12,13 +12,21 @@ import {
   setRecheckHint,
 } from './store.js';
 import { lookupCover, toCoverData, enqueueRecheck } from './cover.js';
-import { parseLatestEp, pendingNewEpisodes, cleanTitle, throttle } from './util.js';
+import { parseLatestEp, pendingNewEpisodes, cleanTitle, throttle, seasonBuckets } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { enqueue } from './coverQueue.js';
 import { injectStyles } from './ui.js';
 
 let currentDt = null; // DataTables 實例（供切換時恢復原始分頁）
 let initialLen = null; // 原始每頁筆數
+
+// 年+季桶篩選（單選）：狀態 + 桶資料。甲方案：bucketMap 由 fetchLatestEpMap 即時導出、不落地。
+let activeBucket = null; // 單選：選中的桶字串（如 '2026春'），null = 無篩選
+let bucketMap = null; // { [catId]: ['2025春',...] }，載入後才有
+const nodeCatId = new WeakMap(); // row <tr> → catId 快取（predicate 每列每次 draw 都跑）
+let filterTable = null; // 首頁 DataTable 的 <table> 元素（predicate 限定只作用本表）
+let predicatePushed = false;
+let updateBucketEdges = () => {}; // 由 mountToolbar 賦值：依捲動位置切換頭尾箭頭顯隱
 
 // 從連結取穩定 key 與年份。動畫分類頁：/category/<季>/<名>（兩段）或 /?cat=NNNN。
 function animeRef(a) {
@@ -221,6 +229,7 @@ export function initListPage() {
 
   mountToolbar();
   setupInfiniteScroll();
+  initBucketFilter(); // 年+季桶篩選：即時導出 bucketMap + 填 chip 列（甲方案，不落地）
   prefetchTrackingCovers(); // 可見海報抓完後接著補抓追番清單缺的封面（tracking 層低優先，不擋可見列表）
 
   // 廣播視窗就近順序給持租約的 worker（可能是別的分頁）→ 它會優先複查使用者眼前那批待確認。
@@ -265,6 +274,101 @@ export function repaintCard(catId, data) {
     markRating(img, data);
     return;
   }
+}
+
+// 年+季桶顯示排序：年遞減、同年季遞減（秋→夏→春→冬），最新季在前。
+const SEASON_ORD = { 冬: 0, 春: 1, 夏: 2, 秋: 3 };
+function compareBuckets(a, b) {
+  const ya = +a.slice(0, 4);
+  const yb = +b.slice(0, 4);
+  if (ya !== yb) return yb - ya;
+  return (SEASON_ORD[b[4]] ?? -1) - (SEASON_ORD[a[4]] ?? -1);
+}
+
+// DataTables 自訂搜尋 predicate：依 activeBucket 過濾。每次 draw() 對每列呼叫。
+// 單選 + 多桶歸屬：選中的桶只要命中該番任一桶就保留。與既有文字搜尋天然 AND。
+function bucketPredicate(settings, _searchData, dataIndex) {
+  if (filterTable && settings.nTable !== filterTable) return true; // 只管首頁表
+  if (!activeBucket) return true; // 無篩選 → 全過
+  const node = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+  if (!node) return true;
+  let catId = nodeCatId.get(node);
+  if (catId === undefined) {
+    const a = node.querySelector('a[href]');
+    const ref = a ? animeRef(a) : null;
+    catId = ref ? ref.key : null;
+    nodeCatId.set(node, catId);
+  }
+  if (!catId) return false; // 解不出 catId → 啟用篩選時當不符合
+  const bs = (bucketMap && bucketMap[catId]) || [];
+  return bs.includes(activeBucket);
+}
+
+// 等 DataTables 程式庫就緒後 push predicate（只一次）。ext.search 在表格 init 前即可用。
+function ensureBucketPredicate(tries = 0) {
+  if (predicatePushed) return;
+  const w = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+  const $ = w.jQuery || w.$;
+  if ($ && $.fn && $.fn.dataTable && $.fn.dataTable.ext) {
+    $.fn.dataTable.ext.search.push(bucketPredicate);
+    predicatePushed = true;
+    return;
+  }
+  if (tries < 48) setTimeout(() => ensureBucketPredicate(tries + 1), 250); // ~12s 輪詢
+}
+
+function redrawFilter() {
+  const dt = currentDt || getDataTable();
+  if (dt) {
+    try {
+      dt.draw(false); // 保留分頁長度，配合無限捲動
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// 單選一個桶（傳 null = 取消）。同步 chip 的 aria-pressed 與清除鈕顯隱，並重繪。
+function selectBucket(bucket, wrap) {
+  activeBucket = bucket;
+  for (const chip of wrap.querySelectorAll('.a1p-bucket-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.bucket === bucket));
+  }
+  const clear = document.querySelector('.a1p-bucket-clear'); // ✕ 在捲動區外，全域查找
+  if (clear) clear.hidden = !bucket;
+  redrawFilter();
+}
+
+// 甲方案：fetchLatestEpMap（已 5 分快取）即時導出 bucketMap + 全桶集合，填入 chip 列。不落地。
+async function initBucketFilter() {
+  const wrap = document.querySelector('.a1p-tb-buckets');
+  if (!wrap || wrap.dataset.filled) return;
+  const map = await fetchLatestEpMap();
+  bucketMap = {};
+  const all = new Set();
+  for (const [catId, info] of Object.entries(map)) {
+    const bs = seasonBuckets(info.year, info.season);
+    if (!bs.length) continue;
+    bucketMap[catId] = bs;
+    for (const b of bs) all.add(b);
+  }
+  filterTable = document.querySelector('table.tablepress') || document.querySelector('table');
+  ensureBucketPredicate();
+  const buckets = [...all].sort(compareBuckets);
+  const frag = document.createDocumentFragment();
+  for (const b of buckets) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'a1p-bucket-chip';
+    chip.textContent = b;
+    chip.dataset.bucket = b;
+    chip.setAttribute('aria-pressed', 'false');
+    chip.onclick = () => selectBucket(b === activeBucket ? null : b, wrap);
+    frag.appendChild(chip);
+  }
+  wrap.appendChild(frag);
+  wrap.dataset.filled = '1';
+  updateBucketEdges(); // chip 填完 → 依是否溢出顯示頭尾箭頭
 }
 
 // 懸浮工具列：搜尋（移入原生 filter）+ 卡片/列表切換 + 卡片大小
@@ -337,7 +441,52 @@ function mountToolbar() {
   };
   sizeWrap.append('卡片大小', range);
 
-  bar.append(search, sizeWrap, viewBtn);
+  // 年+季桶篩選列（獨佔第二行，橫向捲動）。chip 由 initBucketFilter 載入後填入。
+  const buckets = document.createElement('div');
+  buckets.className = 'a1p-tb-buckets';
+  // 直向滾輪 → 橫向捲動（原生 overflow-x 不吃直向滾輪）
+  buckets.addEventListener(
+    'wheel',
+    (e) => {
+      if (!e.deltaY) return;
+      e.preventDefault();
+      buckets.scrollLeft += e.deltaY;
+    },
+    { passive: false },
+  );
+  // ✕ 清除：在捲動區外、最左側。有選時 |(✕)‹ 桶 ›|、無選時 |‹ 桶 ›|。
+  const clearBtn = document.createElement('button');
+  clearBtn.type = 'button';
+  clearBtn.className = 'a1p-bucket-clear';
+  clearBtn.textContent = '✕';
+  clearBtn.title = '清除';
+  clearBtn.hidden = true;
+  clearBtn.onclick = () => selectBucket(null, buckets);
+
+  // 捲動區（relative）內覆蓋頭尾 ‹›：純漸層淡出提示、不可按（pointer-events:none），
+  // 讓 chip 在邊緣淡入背景，只在該方向還能捲時淡入顯示。
+  const scroll = document.createElement('div');
+  scroll.className = 'a1p-tb-scroll';
+  const arrowL = document.createElement('span');
+  arrowL.className = 'a1p-tb-arrow l';
+  arrowL.textContent = '‹';
+  const arrowR = document.createElement('span');
+  arrowR.className = 'a1p-tb-arrow r';
+  arrowR.textContent = '›';
+  updateBucketEdges = () => {
+    const max = buckets.scrollWidth - buckets.clientWidth;
+    arrowL.classList.toggle('show', buckets.scrollLeft > 2);
+    arrowR.classList.toggle('show', buckets.scrollLeft < max - 2);
+  };
+  buckets.addEventListener('scroll', updateBucketEdges, { passive: true });
+  window.addEventListener('resize', updateBucketEdges, { passive: true });
+  scroll.append(buckets, arrowL, arrowR);
+
+  const bucketWrap = document.createElement('div');
+  bucketWrap.className = 'a1p-tb-bucketwrap';
+  bucketWrap.append(clearBtn, scroll);
+
+  bar.append(search, sizeWrap, viewBtn, bucketWrap);
 
   const anchor = document.querySelector('#primary, .content-area, #main, #content') || document.body;
   anchor.insertBefore(bar, anchor.firstChild);

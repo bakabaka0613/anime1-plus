@@ -8,9 +8,10 @@ let cache = null;
 let cacheAt = 0;
 
 /**
- * 回傳 { [animeKey]: { ep, airing, name, year } }，animeKey 形如 "cat:1846"。
+ * 回傳 { [animeKey]: { ep, airing, name, year, season } }，animeKey 形如 "cat:1846"。
  * ep 為最新一般集數（劇場版/OVA 等無一般集數者為 null）、airing 表首頁是否標「連載中」、
- * name/year 為首頁清單的原始繁體名與年份（供追番清單補抓封面用）。失敗時回退舊快取或空物件。
+ * name/year 為首頁清單的原始繁體名與年份（供追番清單補抓封面用）、season 為原始季欄
+ * （seasonBuckets 解析年+季桶用）。失敗時回退舊快取或空物件。
  */
 export async function fetchLatestEpMap() {
   const now = Date.now();
@@ -29,6 +30,7 @@ export async function fetchLatestEpMap() {
         airing: isAiring(epText),
         name: r[1] != null ? String(r[1]).trim() : '',
         year: r[3] != null ? String(r[3]) : null,
+        season: r[4] != null ? String(r[4]) : null, // 原始季欄（可能跨季/跨年斜線多值）→ seasonBuckets 解析
       };
     }
     cache = map;

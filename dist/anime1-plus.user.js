@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.29
+// @version      0.6.35
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -530,6 +530,18 @@
     const pad = (n) => String(n).padStart(2, "0");
     return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
   }
+  function seasonBuckets(r3, r4) {
+    const s = String(r4 || "");
+    const prefixed = [...s.matchAll(/(\d{4})\s*([春夏秋冬])/g)];
+    if (prefixed.length) return prefixed.map((m) => m[1] + m[2]);
+    const seasons = s.match(/[春夏秋冬]/g) || [];
+    const years = [];
+    for (const y of String(r3 || "").match(/\d{4}/g) || []) if (!years.includes(y)) years.push(y);
+    if (!seasons.length || !years.length) return [];
+    if (years.length === seasons.length) return seasons.map((se, i) => years[i] + se);
+    if (years.length === 1) return seasons.map((se) => years[0] + se);
+    return seasons.map((se) => years[0] + se);
+  }
 
   // src/store.js
   var ROOT_KEY = "a1p:data";
@@ -819,7 +831,9 @@
           // 無一般集數 → null（renderPanel 視同無更新）
           airing: isAiring(epText),
           name: r[1] != null ? String(r[1]).trim() : "",
-          year: r[3] != null ? String(r[3]) : null
+          year: r[3] != null ? String(r[3]) : null,
+          season: r[4] != null ? String(r[4]) : null
+          // 原始季欄（可能跨季/跨年斜線多值）→ seasonBuckets 解析
         };
       }
       cache = map;
@@ -949,6 +963,31 @@ body.a1p-grid-on .a1p-update-badge{display:block;position:absolute;top:6px;right
 .a1p-tb-btn:hover{background:#303138}
 .a1p-tb-size{display:flex;align-items:center;gap:6px;height:32px;font-size:12px;color:#9aa0a6;white-space:nowrap}
 body:not(.a1p-grid-on) .a1p-tb-size{display:none} /* 原始列表模式不需大小調整 */
+/* 年+季桶篩選列：|(✕)‹ 桶 ›|。✕ 在捲動區外最左，頭尾 ‹› 為邊緣淡出指示（不可按）。 */
+.a1p-tb-bucketwrap{flex:1 1 100%;display:flex;align-items:center;gap:6px;min-width:0}
+.a1p-tb-scroll{position:relative;flex:1 1 auto;min-width:0;display:flex}
+.a1p-tb-buckets{flex:1 1 auto;min-width:0;display:flex;gap:6px;align-items:center;overflow-x:auto;
+  scrollbar-width:none} /* 隱藏滑條，改用頭尾淡出提示 */
+.a1p-tb-buckets::-webkit-scrollbar{display:none}
+/* 頭尾淡出：絕對覆蓋邊緣，漸層讓 chip 淡入背景 + 小而淡的 ‹›；不可按、點擊穿透到下方 chip。
+   只在該方向還能捲時 .show 淡入。背景色對齊工具列底色 #0d0d10。 */
+.a1p-tb-arrow{position:absolute;top:0;bottom:0;width:28px;pointer-events:none;opacity:0;
+  display:flex;align-items:center;color:#c2c7cf;font-size:15px;line-height:1;transition:opacity .15s}
+.a1p-tb-arrow.show{opacity:1}
+.a1p-tb-arrow.l{left:0;justify-content:flex-start;padding-left:1px;
+  background:linear-gradient(to right,#0d0d10 35%,transparent)}
+.a1p-tb-arrow.r{right:0;justify-content:flex-end;padding-right:1px;
+  background:linear-gradient(to left,#0d0d10 35%,transparent)}
+.a1p-bucket-chip{flex:0 0 auto;cursor:pointer;border:1px solid #45464c;background:#26272c;color:#cfd2d6;
+  border-radius:14px;height:26px;padding:0 12px;font-size:12px;white-space:nowrap}
+.a1p-bucket-chip:hover{background:#303138}
+.a1p-bucket-chip[aria-pressed="true"]{background:#2f6fed;border-color:#2f6fed;color:#fff}
+/* 清除鈕：純 ✕ 緊湊方鈕，在捲動區外最左（✕ 隱藏時 flex gap 不佔位） */
+.a1p-bucket-clear{flex:0 0 auto;cursor:pointer;
+  border:1px solid #5a3a3a;background:#2c2326;color:#e0a3a3;border-radius:13px;
+  width:26px;height:26px;padding:0;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.a1p-bucket-clear:hover{background:#3a2c2f}
+.a1p-bucket-clear[hidden]{display:none}
 /* 窄螢幕：搜尋框獨佔一行，卡片大小滑條與「原始列表」按鈕換到第二行並靠右，避免擠壓 */
 @media (max-width:640px){.a1p-tb-search{flex-basis:100%}.a1p-toolbar{justify-content:flex-end}}
 body.a1p-grid-on .a1p-grid-table thead{display:none}
@@ -2351,6 +2390,13 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   // src/list.js
   var currentDt = null;
   var initialLen = null;
+  var activeBucket = null;
+  var bucketMap = null;
+  var nodeCatId = /* @__PURE__ */ new WeakMap();
+  var filterTable = null;
+  var predicatePushed = false;
+  var updateBucketEdges = () => {
+  };
   function animeRef(a) {
     const href = a.getAttribute("href") || "";
     let dec = href;
@@ -2518,6 +2564,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     new MutationObserver(scanTable).observe(document.body, { childList: true, subtree: true });
     mountToolbar();
     setupInfiniteScroll();
+    initBucketFilter();
     prefetchTrackingCovers();
     const publishHint = throttle(() => setRecheckHint(viewportCatOrder().slice(0, 30)), 1e3);
     publishHint();
@@ -2552,6 +2599,88 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       markRating(img, data);
       return;
     }
+  }
+  var SEASON_ORD = { 冬: 0, 春: 1, 夏: 2, 秋: 3 };
+  function compareBuckets(a, b) {
+    const ya = +a.slice(0, 4);
+    const yb = +b.slice(0, 4);
+    if (ya !== yb) return yb - ya;
+    return (SEASON_ORD[b[4]] ?? -1) - (SEASON_ORD[a[4]] ?? -1);
+  }
+  function bucketPredicate(settings, _searchData, dataIndex) {
+    if (filterTable && settings.nTable !== filterTable) return true;
+    if (!activeBucket) return true;
+    const node = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+    if (!node) return true;
+    let catId = nodeCatId.get(node);
+    if (catId === void 0) {
+      const a = node.querySelector("a[href]");
+      const ref = a ? animeRef(a) : null;
+      catId = ref ? ref.key : null;
+      nodeCatId.set(node, catId);
+    }
+    if (!catId) return false;
+    const bs = bucketMap && bucketMap[catId] || [];
+    return bs.includes(activeBucket);
+  }
+  function ensureBucketPredicate(tries = 0) {
+    if (predicatePushed) return;
+    const w = typeof unsafeWindow !== "undefined" ? unsafeWindow : window;
+    const $ = w.jQuery || w.$;
+    if ($ && $.fn && $.fn.dataTable && $.fn.dataTable.ext) {
+      $.fn.dataTable.ext.search.push(bucketPredicate);
+      predicatePushed = true;
+      return;
+    }
+    if (tries < 48) setTimeout(() => ensureBucketPredicate(tries + 1), 250);
+  }
+  function redrawFilter() {
+    const dt = currentDt || getDataTable();
+    if (dt) {
+      try {
+        dt.draw(false);
+      } catch {
+      }
+    }
+  }
+  function selectBucket(bucket, wrap) {
+    activeBucket = bucket;
+    for (const chip of wrap.querySelectorAll(".a1p-bucket-chip")) {
+      chip.setAttribute("aria-pressed", String(chip.dataset.bucket === bucket));
+    }
+    const clear = document.querySelector(".a1p-bucket-clear");
+    if (clear) clear.hidden = !bucket;
+    redrawFilter();
+  }
+  async function initBucketFilter() {
+    const wrap = document.querySelector(".a1p-tb-buckets");
+    if (!wrap || wrap.dataset.filled) return;
+    const map = await fetchLatestEpMap();
+    bucketMap = {};
+    const all = /* @__PURE__ */ new Set();
+    for (const [catId, info] of Object.entries(map)) {
+      const bs = seasonBuckets(info.year, info.season);
+      if (!bs.length) continue;
+      bucketMap[catId] = bs;
+      for (const b of bs) all.add(b);
+    }
+    filterTable = document.querySelector("table.tablepress") || document.querySelector("table");
+    ensureBucketPredicate();
+    const buckets = [...all].sort(compareBuckets);
+    const frag = document.createDocumentFragment();
+    for (const b of buckets) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "a1p-bucket-chip";
+      chip.textContent = b;
+      chip.dataset.bucket = b;
+      chip.setAttribute("aria-pressed", "false");
+      chip.onclick = () => selectBucket(b === activeBucket ? null : b, wrap);
+      frag.appendChild(chip);
+    }
+    wrap.appendChild(frag);
+    wrap.dataset.filled = "1";
+    updateBucketEdges();
   }
   function mountToolbar() {
     if (document.querySelector(".a1p-toolbar")) return;
@@ -2614,7 +2743,44 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       setSettings({ cardWidth: Number(range.value) });
     };
     sizeWrap.append("卡片大小", range);
-    bar.append(search, sizeWrap, viewBtn);
+    const buckets = document.createElement("div");
+    buckets.className = "a1p-tb-buckets";
+    buckets.addEventListener(
+      "wheel",
+      (e) => {
+        if (!e.deltaY) return;
+        e.preventDefault();
+        buckets.scrollLeft += e.deltaY;
+      },
+      { passive: false }
+    );
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "a1p-bucket-clear";
+    clearBtn.textContent = "✕";
+    clearBtn.title = "清除";
+    clearBtn.hidden = true;
+    clearBtn.onclick = () => selectBucket(null, buckets);
+    const scroll = document.createElement("div");
+    scroll.className = "a1p-tb-scroll";
+    const arrowL = document.createElement("span");
+    arrowL.className = "a1p-tb-arrow l";
+    arrowL.textContent = "‹";
+    const arrowR = document.createElement("span");
+    arrowR.className = "a1p-tb-arrow r";
+    arrowR.textContent = "›";
+    updateBucketEdges = () => {
+      const max = buckets.scrollWidth - buckets.clientWidth;
+      arrowL.classList.toggle("show", buckets.scrollLeft > 2);
+      arrowR.classList.toggle("show", buckets.scrollLeft < max - 2);
+    };
+    buckets.addEventListener("scroll", updateBucketEdges, { passive: true });
+    window.addEventListener("resize", updateBucketEdges, { passive: true });
+    scroll.append(buckets, arrowL, arrowR);
+    const bucketWrap = document.createElement("div");
+    bucketWrap.className = "a1p-tb-bucketwrap";
+    bucketWrap.append(clearBtn, scroll);
+    bar.append(search, sizeWrap, viewBtn, bucketWrap);
     const anchor = document.querySelector("#primary, .content-area, #main, #content") || document.body;
     anchor.insertBefore(bar, anchor.firstChild);
     setupStickyToolbar(bar);
