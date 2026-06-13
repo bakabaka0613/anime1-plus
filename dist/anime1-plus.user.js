@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.25
+// @version      0.6.27
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -888,6 +888,7 @@
   background:#0b0b0d;border:1px solid #45464c;border-radius:8px;box-shadow:0 8px 28px #000a;
   object-fit:contain;pointer-events:none}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
+.a1p-row a.a1p-row-term{color:#9aa0a6} /* 已看完／已到最新進度：低調灰，仍可點回最後看的一集 */
 .a1p-row .a1p-rname{font-weight:600}
 .a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
 .a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
@@ -1506,6 +1507,15 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         return item ? item.url || postUrl(item.postId) : catUrl;
       };
       const target = resumeTarget(eps);
+      let lastWatchedEp = null;
+      let lastAt = -1;
+      for (const k of Object.keys(eps)) {
+        const at = eps[k] && eps[k].watchedAt || 0;
+        if (at > lastAt) {
+          lastAt = at;
+          lastWatchedEp = k;
+        }
+      }
       let link;
       if (target.mode === "resume") {
         const t = formatTime((eps[target.ep] || {}).currentTime || 0);
@@ -1518,7 +1528,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         } else if (x.newEps) {
           link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;
         } else {
-          link = x.airing ? '<span class="a1p-sub">已到最新進度</span>' : '<span class="a1p-sub">已看完</span>';
+          const label = x.airing ? "已到最新進度" : "已看完";
+          const u = lastWatchedEp != null ? epUrl(lastWatchedEp) : null;
+          const epTxt = /^\d+$/.test(String(lastWatchedEp)) ? `第${lastWatchedEp}集` : String(lastWatchedEp || "");
+          link = u ? `<a class="a1p-row-term" href="${u}">${label}${epTxt ? `（回看${epTxt}）` : ""}</a>` : `<span class="a1p-sub">${label}</span>`;
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : "";

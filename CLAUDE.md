@@ -77,12 +77,31 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
 - Inline player on the **category page** is the real watch flow: identify episode via the player's
   `data-apireq`; single-episode page `/{postId}` also supported. Non-native `<video>` → silently skip
   progress (don't error).
+- **Episode selector + single-page nav** (`collapseToSinglePlayer` / `enhanceEpisodeNav` in `ui.js`):
+  selector labels specials as `SP/OVA/OAD…` (from `epRaw` → `type` → 特; same-base specials get a numeric
+  suffix), numbered eps first then specials. Selector shows even for a single article when the category is
+  paginated (gate: single AND no `PAGINATION_SEL`). On the single-episode page the native 全集連結/下一集/上一集
+  links are restyled into a `[上一集] 全集連結 [下一集]` button row; prev/next come from `episodeNeighbors`
+  over the **same unified order as the selector** (numbers→specials), locating the current ep by
+  ep / epRaw / postId; always shown, gray-disabled (`a1p-btn-disabled`) when no neighbor; when the ep is
+  found in cache, ALL native nav links except 全集連結 are stripped (kills anime1's stray OVA / 下一集(SP)
+  shortcuts), else native is kept as fallback. On the category page these native links are hidden
+  (`enhanceEpisodeNav({hide:true})`).
+- **`meta.episodes` is the next/prev backbone** (`{ep, postId}`, plus `{ep:null, epRaw, postId}` for
+  specials): three must-dos learned the hard way — (1) `markCategoryEpisodes` stores specials too and
+  reads postId from the resolved `a.href` (relative hrefs); (2) it **merges across paginated pages**
+  (union by postId, monotonic `maxEpSeen`) — replacing per-page would lose other pages / wipe numbers on
+  an OVA-only page; (3) `mergeSync` **unions `episodes` by postId** across devices — taking the
+  maxEpSeen-bigger side wholesale let a stale/page-1-only remote overwrite the merged list (the real cause
+  of "specials/page-2 never cached").
 - Mark "watched" only at **≥90%**; guard against the 0-progress flash on player reload overwriting progress.
 - Overlay UI must use `!important` to beat video.js / site styles; sync auto-hide via vjs classes; fix
   focus black outline. See memory `player-ui-gotchas`.
 - **Update reminders** only fire for anime that "once caught up to the then-latest episode"
   (relies on `meta.maxEpSeen`, recorded only after visiting the category page) — conservative, won't nag.
-- For airing anime fully watched, show "已到最新進度"; for completed, "已看完".
+- For airing anime fully watched, show "已到最新進度"; for completed, "已看完". Both terminal labels are a
+  **link back to the last-watched episode** (max `watchedAt`, via `epUrl`), styled muted-gray
+  (`.a1p-row-term` #9aa0a6) vs the accent-blue of the primary resume/next links.
 - Tracking panel: rows are split into two sections — "in-progress" (resume / next / new ep) on top,
   "finished / caught-up" below — each ordered by last-watched desc (`isCaughtUp` in `util.js` drives both
   the sort and which terminal label shows). **Hold Shift + click 📺** to enter manage mode: per anime a

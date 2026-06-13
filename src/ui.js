@@ -63,6 +63,7 @@ export function injectStyles() {
   background:#0b0b0d;border:1px solid #45464c;border-radius:8px;box-shadow:0 8px 28px #000a;
   object-fit:contain;pointer-events:none}
 .a1p-row a{color:#9ec1ff;text-decoration:none}
+.a1p-row a.a1p-row-term{color:#9aa0a6} /* 已看完／已到最新進度：低調灰，仍可點回最後看的一集 */
 .a1p-row .a1p-rname{font-weight:600}
 .a1p-row.a1p-row-new{background:#2a1820;border-left:3px solid #e0466e;padding-left:6px;margin-left:-3px}
 .a1p-row-badge{display:inline-block;margin-left:6px;background:#e0466e;color:#fff;font-size:11px;
@@ -783,6 +784,16 @@ function panelRowsHtml(list, delMode) {
       };
       // 以最後觀看的集為準（不論是否標記看完）：未看完→繼續看該集；已看完→指向下一集
       const target = resumeTarget(eps);
+      // 最後觀看的集（watchedAt 最大）— 終端狀態（已看完/已到最新進度）用來連回最後看的一集
+      let lastWatchedEp = null;
+      let lastAt = -1;
+      for (const k of Object.keys(eps)) {
+        const at = (eps[k] && eps[k].watchedAt) || 0;
+        if (at > lastAt) {
+          lastAt = at;
+          lastWatchedEp = k;
+        }
+      }
       let link;
       if (target.mode === 'resume') {
         const t = formatTime((eps[target.ep] || {}).currentTime || 0);
@@ -800,10 +811,14 @@ function panelRowsHtml(list, delMode) {
           // 有新集、但本機 meta 尚未記錄該集單集頁（沒再進過分類頁）→ 連到分類頁看新集
           link = `<a href="${catUrl}">看新集 第${nextEp}集</a>`;
         } else {
-          // 連載中（首頁標「連載中」）→ 已追到最新進度；否則該番已完結 → 已看完
-          link = x.airing
-            ? '<span class="a1p-sub">已到最新進度</span>'
-            : '<span class="a1p-sub">已看完</span>';
+          // 連載中（首頁標「連載中」）→ 已追到最新進度；否則該番已完結 → 已看完。
+          // 連到「最後觀看的一集」，方便回看（有些人想點回最後看的那集）。
+          const label = x.airing ? '已到最新進度' : '已看完';
+          const u = lastWatchedEp != null ? epUrl(lastWatchedEp) : null;
+          const epTxt = /^\d+$/.test(String(lastWatchedEp)) ? `第${lastWatchedEp}集` : String(lastWatchedEp || '');
+          link = u
+            ? `<a class="a1p-row-term" href="${u}">${label}${epTxt ? `（回看${epTxt}）` : ''}</a>`
+            : `<span class="a1p-sub">${label}</span>`;
         }
       }
       const badge = x.newEps ? `<span class="a1p-row-badge">+${x.newEps} 新集</span>` : '';
