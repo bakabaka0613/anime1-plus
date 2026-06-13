@@ -1,11 +1,17 @@
 // 本機儲存封裝（Tampermonkey GM storage）。單一根物件，方便整包匯出/匯入。
-/* global GM_getValue, GM_setValue, GM_deleteValue */
+/* global GM_getValue, GM_setValue, GM_deleteValue, GM_addValueChangeListener */
 import { mergeSync, markEpisodesDone, isDeleted, normalizeWatchMeta } from './util.js';
 
 const ROOT_KEY = 'a1p:data';
 // 同步設定（token / gistId 等）獨立存放，刻意不放進 ROOT_KEY，
 // 這樣 exportAll() 匯出的 JSON 天然不含 token，貼給別人也不會外洩。
 const SYNC_KEY = 'a1p:sync';
+// 跨分頁背景複查租約（多分頁只讓一個跑背景複查，避免重複與對 Bangumi 超速）。獨立 key、不入匯出。
+const RECHECK_LEASE_KEY = 'a1p:recheck_lease';
+// 封面升級事件廣播 key：背景複查把待確認轉正後寫這裡，其他分頁（主頁海報）監聽後即時重繪。
+const COVER_EVT_KEY = 'a1p:cover_evt';
+// 複查優先序提示 key：主頁把目前「視窗就近的 catId 順序」廣播給持租約的 worker，讓它先複查使用者眼前那批。
+const RECHECK_HINT_KEY = 'a1p:recheck_hint';
 
 const DEFAULT_SETTINGS = {
   autoNext: true, // 看完自動下一集
@@ -61,6 +67,52 @@ export function setCover(catId, data) {
   root.covers[catId] = { ...data, ts: Date.now() };
   saveRoot(root);
 }
+// ---- 跨分頁背景複查租約 ----
+export function getRecheckLease() {
+  try {
+    return JSON.parse(GM_getValue(RECHECK_LEASE_KEY, '') || 'null');
+  } catch {
+    return null;
+  }
+}
+export function setRecheckLease(lease) {
+  GM_setValue(RECHECK_LEASE_KEY, JSON.stringify(lease));
+}
+
+// ---- 跨分頁封面升級廣播 ----
+// 背景複查把某封面升級轉正後呼叫，讓其他分頁的海報即時重繪（不必重整）。ts 確保值會變動觸發監聽。
+export function notifyCoverUpgrade(catId) {
+  GM_setValue(COVER_EVT_KEY, JSON.stringify({ catId, ts: Date.now() }));
+}
+// 主頁廣播目前視窗就近的 catId 順序，讓持租約的 worker（可能是別的分頁）優先複查使用者眼前那批。
+export function setRecheckHint(order) {
+  GM_setValue(RECHECK_HINT_KEY, JSON.stringify({ ts: Date.now(), order: order || [] }));
+}
+// 讀取複查優先序提示；過舊（預設 2 分鐘外，代表那分頁可能已關/離開）視為無效 → 回 null 改用 storage 序。
+export function getRecheckHint(maxAgeMs = 120000) {
+  try {
+    const h = JSON.parse(GM_getValue(RECHECK_HINT_KEY, '') || 'null');
+    if (h && Array.isArray(h.order) && typeof h.ts === 'number' && Date.now() - h.ts <= maxAgeMs) return h.order;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+// 訂閱「別的分頁」的封面升級事件（remote=true 才回呼；同分頁升級走 onCoverUpgrade hook，避免重複重繪）。
+export function onCoverUpgradeEvent(fn) {
+  if (typeof GM_addValueChangeListener !== 'function') return;
+  GM_addValueChangeListener(COVER_EVT_KEY, (_name, _old, newV, remote) => {
+    if (!remote) return;
+    try {
+      const e = JSON.parse(newV);
+      if (e && e.catId) fn(e.catId);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
 // 所有「待確認」（低信心暫定）封面，供背景深比對複查。回傳 [{ catId, ...cover }]。
 export function getTentativeCovers() {
   const { covers } = loadRoot();

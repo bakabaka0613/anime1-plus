@@ -1,9 +1,18 @@
 // 列表頁（/）：把 TablePress 表格重排成 PLEX 風格海報卡片網格（封面在上、標題/集數在下）。
 // 封面沿用 lazy + 限流 + 重試；DataTables 的搜尋/分頁在表格外，仍正常運作。
 import { animeKeyFromCategoryPath, yearFromText } from './dom.js';
-import { getCover, setCover, getAnimeWatch, getInProgressList, getSettings, setSettings } from './store.js';
+import {
+  getCover,
+  setCover,
+  getAnimeWatch,
+  getInProgressList,
+  getSettings,
+  setSettings,
+  onCoverUpgradeEvent,
+  setRecheckHint,
+} from './store.js';
 import { lookupCover, toCoverData, enqueueRecheck } from './cover.js';
-import { parseLatestEp, pendingNewEpisodes, cleanTitle } from './util.js';
+import { parseLatestEp, pendingNewEpisodes, cleanTitle, throttle } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { enqueue } from './coverQueue.js';
 import { injectStyles } from './ui.js';
@@ -69,6 +78,13 @@ export function initListPage() {
   const seen = new WeakSet();
   let trackingPrefetched = false;
 
+  // 別的分頁（例如某動畫頁）背景複查把封面升級轉正 → 本主頁即時重繪對應海報，不必重整。
+  // 同分頁的升級走 setCoverUpgradeHook(repaintCard)；這裡只處理跨分頁（remote）事件。
+  onCoverUpgradeEvent((catId) => {
+    const cover = getCover(catId);
+    if (cover && cover.cover) repaintCard(catId, cover);
+  });
+
   // 可見海報排入共享佇列的 visible 層（高優先）；限流/重試由 coverQueue 統一處理。
   const io = new IntersectionObserver(
     (entries) => {
@@ -112,7 +128,7 @@ export function initListPage() {
         data.local = name; // anime1 繁體原名
         setCover(key, data);
         paint(data);
-        enqueueRecheck(key); // 本 session 新產生的待確認 → 背景深比對複查（清除封面後重載也涵蓋）
+        enqueueRecheck(key); // 本 session 新產生的待確認 → 前景深比對複查（眼前卡片，本分頁自做、不讓給租約）
       }
       return true;
     }
@@ -182,7 +198,7 @@ export function initListPage() {
       img.src = cached.cover;
       markCover(img, cached);
       markRating(img, cached);
-      if (cached.tentative) enqueueRecheck(ref.key); // 待確認 → 背景深比對複查（隨捲動渲染 → 天然就近）
+      if (cached.tentative) enqueueRecheck(ref.key); // 待確認 → 前景深比對複查（渲染即排，本分頁自做、就近優先）
       return;
     }
     img._a1pJob = { img, key: ref.key, name, year: ref.year };
@@ -206,6 +222,12 @@ export function initListPage() {
   mountToolbar();
   setupInfiniteScroll();
   prefetchTrackingCovers(); // 可見海報抓完後接著補抓追番清單缺的封面（tracking 層低優先，不擋可見列表）
+
+  // 廣播視窗就近順序給持租約的 worker（可能是別的分頁）→ 它會優先複查使用者眼前那批待確認。
+  // 取前 30 名就近 catId；節流避免捲動狂寫。本分頁自己持租約時也會讀到、效果一致。
+  const publishHint = throttle(() => setRecheckHint(viewportCatOrder().slice(0, 30)), 1000);
+  publishHint();
+  window.addEventListener('scroll', publishHint, { passive: true });
 }
 
 // 目前已渲染的卡片 catId，依與視窗中心的垂直距離排序（最近者在前）。

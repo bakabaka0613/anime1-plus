@@ -28,6 +28,57 @@ export function toTraditional(s) {
   return conv ? conv(str) : str;
 }
 
+// Bangumi 全文搜尋會被「主名以外的雜訊」帶偏而漏掉正確條目，兩種真實情況：
+//   尾端破折號/英文副標——「随兴旅 -That's Journey-」搜不到，只搜「随兴旅」才排第一；
+//   前綴 franchise 名——「銀魂 3年Z班銀八老師」搜回一堆銀魂正篇，去前綴搜「3年Z班銀八老師」才排第一。
+// 故把標題以「首個空白」切成 主段 / 尾段，兩段都當補搜關鍵字（不必預判哪段是真名）。
+// 各段去除前後破折號/空白雜訊；過短（<2 字）或與原字串相同者捨棄。回傳去重後陣列（無空白 → []）。
+// 注意：相似度比對仍以完整 baseName 為準（評分閘門不變，這裡只增加召回），不可拿分段取代 baseName。
+export function titleSearchSegments(baseName) {
+  const k = String(baseName || '').trim();
+  const clean = (s) => s.replace(/^[-–—\s]+|[-–—\s]+$/g, '').trim();
+  const out = [];
+  const add = (s) => {
+    const c = clean(s);
+    if (c && c.length >= 2 && c !== k && !out.includes(c)) out.push(c);
+  };
+  // 括號內常是「通用譯名/別名」（anime1 把通用名放括號，如「魔王陛下…R(重來吧，魔王大人！ R)」，
+  // 而 Bangumi name_cn 對得上括號內）。取括號外與括號內各一段。半/全形括號皆可。此法最優先。
+  const paren = k.match(/^(.*?)[（(]([^（()）]+)[)）](.*)$/);
+  if (paren) {
+    add(`${paren[1]} ${paren[3]}`); // 括號外（前段＋後段）
+    add(paren[2]); // 括號內
+    return out;
+  }
+  // 雙語標題「拉丁名 + CJK名」（如「GRAND BLUE 碧藍之海」「WONDANCE—熱舞青春—」）：在 拉丁→CJK
+  // 邊界切，否則下面的「首個空白」切法會把含空白的英文名切爛（GRAND｜BLUE）。此法優先。
+  const bi = k.match(/^([A-Za-z][A-Za-z0-9 .,&':!?]*?)[\s—–-]+([぀-ヿ㐀-䶿一-鿿豈-﫿].*)$/);
+  if (bi) {
+    add(bi[1]);
+    add(bi[2]);
+    return out;
+  }
+  // 一般：首個分隔符切「主段 / 尾段」。分隔符＝em/en dash（常無空白，如尾端破折號副標）、
+  // 空白接連字號（如「… -That's Journey-」）、或單純空白。連字號須前有空白才算分隔 → 保護名稱內連字號（K-ON）。
+  const m = k.match(/\s*[—–]+\s*|\s+-+\s*|\s+/);
+  if (m) {
+    add(k.slice(0, m.index));
+    add(k.slice(m.index + m[0].length));
+  }
+  return out;
+}
+
+// Bangumi infobox 的別名值常把多個名字用頓號/逗號併在一條（如「醜男真戰士、丑男真战士」）。
+// 拆成個別名字供逐一比對——否則 normalizeName 吃掉頓號後會變相黏接（「丑男真战士丑男真战士」），
+// 單一標題只對到一半、過不了 alias 的 0.9 而漏配。只拆列舉分隔（、，,;；/／），不拆空白：
+// 保留多字英文名完整（如「Busamen Gachi Fighter」）。回傳去空白後的非空陣列。
+export function splitAliasNames(value) {
+  return String(value || '')
+    .split(/[、，,;；/／]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 // 全形英數 → 半形，方便名稱正規化比對
 function toHalfWidth(s) {
   return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/　/g, ' ');
@@ -173,6 +224,39 @@ export function isCaughtUp(episodes, metaEpisodes, newEps) {
   if (hasNextItem) return false; // 有下一集可看
   if (newEps) return false; // 有新集可看
   return true; // 看下一集無處可去、也沒有新集 → 已看完 / 已到最新進度
+}
+
+// 依視窗 hint（catId 順序，近→遠）從 jobs 中挑「最靠近視窗」的 index：job.key 在 hint 中 rank 最小者。
+// 全不在 hint（或無 hint/空 jobs）→ 0（FIFO）。純函式，便於測試。供 recheck 層動態挑最近的待確認。
+export function pickByHint(jobs, hint) {
+  if (!jobs || !jobs.length || !hint || !hint.length) return 0;
+  const rank = new Map();
+  hint.forEach((k, i) => {
+    if (!rank.has(k)) rank.set(k, i);
+  });
+  let best = 0;
+  let bestRank = Infinity;
+  for (let i = 0; i < jobs.length; i++) {
+    const j = jobs[i];
+    const r = j && j.key != null && rank.has(j.key) ? rank.get(j.key) : Infinity;
+    if (r < bestRank) {
+      bestRank = r;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// 跨分頁「背景複查」租約決策（純函式，便於測試）：多分頁各自有獨立的封面佇列與限流，
+// 若每個分頁都跑背景複查 → 對 Bangumi 請求量翻倍、重複複查同一批待確認。故用一份共享租約，
+// 只有持租約的分頁跑背景複查。給定目前 storage 中的租約、本分頁 id、現在時間、TTL，回傳：
+//   { owns:true,  lease:{owner,expires} } → 可跑（呼叫端把 lease 寫回 storage 取得/續租）
+//   { owns:false, lease:<原租約> }        → 別的分頁正持新鮮租約 → 本分頁不跑
+// 規則：無租約 / 租約過期（expires<=now）/ 本來就是自己 → 取得或續租；否則讓賢。
+export function evaluateRecheckLease(stored, tabId, now, ttl) {
+  const fresh = stored && typeof stored.expires === 'number' && stored.expires > now;
+  if (fresh && stored.owner !== tabId) return { owns: false, lease: stored };
+  return { owns: true, lease: { owner: tabId, expires: now + ttl } };
 }
 
 // 背景複查「待確認」封面的判定：未在 retryMs 內做過深比對者才需再試。

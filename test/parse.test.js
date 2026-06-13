@@ -72,6 +72,18 @@ test('「電影版 」帶空格前綴也移除', () => {
   assert.equal(r.baseName, '搖曳露營△');
 });
 
+test('簡體類型標記也移除（剧场/总集篇）——繁簡對稱才不會稀釋相似度', () => {
+  const r = parseTitle('剧场总集篇孤独摇滚！ Re:');
+  assert.ok(!r.baseName.includes('总集篇'));
+  assert.equal(r.baseName, '剧场孤独摇滚！ Re:');
+});
+
+test('簡體「剧场版」前綴視為 MOVIE 並移除', () => {
+  const r = parseTitle('剧场版 空之境界 第一章 俯瞰风景');
+  assert.equal(r.type, 'MOVIE');
+  assert.ok(!r.baseName.includes('剧场版'));
+});
+
 test('OVA type = OVA', () => {
   const r = parseTitle('某科學的超電磁砲 OVA [01]');
   assert.equal(r.type, 'OVA');

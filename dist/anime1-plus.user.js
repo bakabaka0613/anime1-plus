@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.18
+// @version      0.6.20
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -16,6 +16,7 @@
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
+// @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
 // @connect      api.bgm.tv
@@ -165,10 +166,13 @@
   function extractType(rest, epRaw) {
     const hay = `${rest} ${epRaw || ""}`;
     let type = "TV";
-    if (/劇場版|電影版|\bmovie\b/i.test(hay)) type = "MOVIE";
+    if (/劇場版|剧场版|電影版|电影版|\bmovie\b/i.test(hay)) type = "MOVIE";
     else if (/OVA|OAD/i.test(hay)) type = "OVA";
-    else if (/特別篇|總集篇|\bSP\b|\bspecial\b/i.test(hay)) type = "SP";
-    const cleaned = rest.replace(/劇場版|電影版|\bmovie\b|OVA|OAD|特別篇|總集篇|\bSP\b|\bspecial\b/gi, "");
+    else if (/特別篇|特别篇|總集篇|总集篇|\bSP\b|\bspecial\b/i.test(hay)) type = "SP";
+    const cleaned = rest.replace(
+      /劇場版|剧场版|電影版|电影版|\bmovie\b|OVA|OAD|特別篇|特别篇|總集篇|总集篇|\bSP\b|\bspecial\b/gi,
+      ""
+    );
     return { type, rest: cleaned };
   }
   function extractSeason(rest) {
@@ -227,6 +231,36 @@
     const str = String(s || "");
     const conv = ccConverter("cn", "tw");
     return conv ? conv(str) : str;
+  }
+  function titleSearchSegments(baseName) {
+    const k = String(baseName || "").trim();
+    const clean = (s) => s.replace(/^[-–—\s]+|[-–—\s]+$/g, "").trim();
+    const out = [];
+    const add = (s) => {
+      const c = clean(s);
+      if (c && c.length >= 2 && c !== k && !out.includes(c)) out.push(c);
+    };
+    const paren = k.match(/^(.*?)[（(]([^（()）]+)[)）](.*)$/);
+    if (paren) {
+      add(`${paren[1]} ${paren[3]}`);
+      add(paren[2]);
+      return out;
+    }
+    const bi = k.match(/^([A-Za-z][A-Za-z0-9 .,&':!?]*?)[\s—–-]+([぀-ヿ㐀-䶿一-鿿豈-﫿].*)$/);
+    if (bi) {
+      add(bi[1]);
+      add(bi[2]);
+      return out;
+    }
+    const m = k.match(/\s*[—–]+\s*|\s+-+\s*|\s+/);
+    if (m) {
+      add(k.slice(0, m.index));
+      add(k.slice(m.index + m[0].length));
+    }
+    return out;
+  }
+  function splitAliasNames(value) {
+    return String(value || "").split(/[、，,;；/／]/).map((s) => s.trim()).filter(Boolean);
   }
   function toHalfWidth(s) {
     return s.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 65248)).replace(/　/g, " ");
@@ -332,6 +366,29 @@
     if (hasNextItem) return false;
     if (newEps) return false;
     return true;
+  }
+  function pickByHint(jobs, hint) {
+    if (!jobs || !jobs.length || !hint || !hint.length) return 0;
+    const rank = /* @__PURE__ */ new Map();
+    hint.forEach((k, i) => {
+      if (!rank.has(k)) rank.set(k, i);
+    });
+    let best = 0;
+    let bestRank = Infinity;
+    for (let i = 0; i < jobs.length; i++) {
+      const j = jobs[i];
+      const r = j && j.key != null && rank.has(j.key) ? rank.get(j.key) : Infinity;
+      if (r < bestRank) {
+        bestRank = r;
+        best = i;
+      }
+    }
+    return best;
+  }
+  function evaluateRecheckLease(stored, tabId, now, ttl) {
+    const fresh = stored && typeof stored.expires === "number" && stored.expires > now;
+    if (fresh && stored.owner !== tabId) return { owns: false, lease: stored };
+    return { owns: true, lease: { owner: tabId, expires: now + ttl } };
   }
   function shouldRecheck(cover, now, retryMs = 7 * 24 * 60 * 60 * 1e3) {
     if (!cover || !cover.tentative) return false;
@@ -471,6 +528,9 @@
   // src/store.js
   var ROOT_KEY = "a1p:data";
   var SYNC_KEY = "a1p:sync";
+  var RECHECK_LEASE_KEY = "a1p:recheck_lease";
+  var COVER_EVT_KEY = "a1p:cover_evt";
+  var RECHECK_HINT_KEY = "a1p:recheck_hint";
   var DEFAULT_SETTINGS = {
     autoNext: true,
     // 看完自動下一集
@@ -530,6 +590,41 @@
     const root = loadRoot();
     root.covers[catId] = { ...data, ts: Date.now() };
     saveRoot(root);
+  }
+  function getRecheckLease() {
+    try {
+      return JSON.parse(GM_getValue(RECHECK_LEASE_KEY, "") || "null");
+    } catch {
+      return null;
+    }
+  }
+  function setRecheckLease(lease) {
+    GM_setValue(RECHECK_LEASE_KEY, JSON.stringify(lease));
+  }
+  function notifyCoverUpgrade(catId) {
+    GM_setValue(COVER_EVT_KEY, JSON.stringify({ catId, ts: Date.now() }));
+  }
+  function setRecheckHint(order) {
+    GM_setValue(RECHECK_HINT_KEY, JSON.stringify({ ts: Date.now(), order: order || [] }));
+  }
+  function getRecheckHint(maxAgeMs = 12e4) {
+    try {
+      const h = JSON.parse(GM_getValue(RECHECK_HINT_KEY, "") || "null");
+      if (h && Array.isArray(h.order) && typeof h.ts === "number" && Date.now() - h.ts <= maxAgeMs) return h.order;
+    } catch {
+    }
+    return null;
+  }
+  function onCoverUpgradeEvent(fn) {
+    if (typeof GM_addValueChangeListener !== "function") return;
+    GM_addValueChangeListener(COVER_EVT_KEY, (_name, _old, newV, remote) => {
+      if (!remote) return;
+      try {
+        const e = JSON.parse(newV);
+        if (e && e.catId) fn(e.catId);
+      } catch {
+      }
+    });
   }
   function getTentativeCovers() {
     const { covers } = loadRoot();
@@ -1889,12 +1984,16 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   var GAP = { visible: 500, tracking: 500, recheck: 5e3 };
   var MAX_RETRIES = 2;
   var q = { visible: [], tracking: [], recheck: [] };
+  var selectors = {};
   var pumping = false;
   var lastRunAt = 0;
   var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  function enqueue(tier, run) {
-    q[tier].push({ run, retries: 0 });
+  function enqueue(tier, run, key) {
+    q[tier].push({ run, retries: 0, key });
     pump();
+  }
+  function setSelector(tier, fn) {
+    selectors[tier] = fn;
   }
   async function pump() {
     if (pumping) return;
@@ -1906,7 +2005,13 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         await sleep(Math.min(wait, 250));
         continue;
       }
-      const job = q[tier].shift();
+      const jobs = q[tier];
+      let idx = 0;
+      if (selectors[tier]) {
+        const i = selectors[tier](jobs);
+        if (Number.isInteger(i) && i >= 0 && i < jobs.length) idx = i;
+      }
+      const job = jobs.splice(idx, 1)[0];
       lastRunAt = Date.now();
       let ok = false;
       try {
@@ -1923,14 +2028,18 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
 
   // src/cover.js
+  var ALIAS_CHECK_LIMIT = 10;
+  var STRONG_SCORE = 0.8;
   async function matchByAlias(parsed, subjects) {
-    const target = toSimplified(parsed.baseName);
-    for (const subject of subjects.slice(0, 6)) {
+    const targets = [toSimplified(parsed.baseName), ...titleSearchSegments(parsed.baseName).map((s) => toSimplified(s))];
+    for (const subject of subjects.slice(0, ALIAS_CHECK_LIMIT)) {
       const aliases = await getSubjectAliases(subject.id);
       for (const al of aliases) {
-        const cand = toSimplified(parseTitle(al).baseName || al);
-        if (similarity(target, cand) >= 0.9) {
-          return { subject, score: 1, breakdown: { name: 1, year: 0.5, season: 1 } };
+        for (const piece of [al, ...splitAliasNames(al)]) {
+          const cand = toSimplified(parseTitle(piece).baseName || piece);
+          if (targets.some((t) => similarity(t, cand) >= 0.9)) {
+            return { subject, score: 1, breakdown: { name: 1, year: 0.5, season: 1 } };
+          }
         }
       }
     }
@@ -1956,12 +2065,34 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
     const subjects = await searchAnime(parsed.baseName);
     let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
-    if (deep && !confident && subjects.length) {
-      const aliasHit = await matchByAlias(parsed, subjects);
-      if (aliasHit) {
-        best = aliasHit;
-        confident = true;
-        ranked = [aliasHit, ...ranked.filter((r) => r.subject.id !== aliasHit.subject.id)];
+    if (deep) {
+      let pool = subjects;
+      if (!confident) {
+        const segs = titleSearchSegments(parsed.baseName);
+        if (segs.length) {
+          const seen = new Set(subjects.map((s) => s.id));
+          const merged = [...subjects];
+          for (const seg of segs) {
+            for (const s of await searchAnime(seg)) {
+              if (!seen.has(s.id)) {
+                seen.add(s.id);
+                merged.push(s);
+              }
+            }
+          }
+          if (merged.length > subjects.length) {
+            pool = merged;
+            ({ ranked, best, confident } = rankCandidates(parsed, year, merged));
+          }
+        }
+      }
+      if ((!confident || best && best.score < STRONG_SCORE) && pool.length) {
+        const aliasHit = await matchByAlias(parsed, pool);
+        if (aliasHit && (!confident || aliasHit.subject.id === best.subject.id)) {
+          best = aliasHit;
+          confident = true;
+          ranked = [aliasHit, ...ranked.filter((r) => r.subject.id !== aliasHit.subject.id)];
+        }
       }
     }
     return { cached: false, parsed, data: confident && best ? toCoverData(best) : null, ranked, confident };
@@ -1994,43 +2125,70 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
   var recheckQueued = /* @__PURE__ */ new Set();
   var onCoverUpgrade = null;
+  setSelector("recheck", (jobs) => pickByHint(jobs, getRecheckHint()));
+  var TAB_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  var RECHECK_LEASE_TTL = 12e3;
+  function claimRecheckLease() {
+    const { owns, lease } = evaluateRecheckLease(getRecheckLease(), TAB_ID, Date.now(), RECHECK_LEASE_TTL);
+    if (owns) setRecheckLease(lease);
+    return owns;
+  }
   function setCoverUpgradeHook(fn) {
     onCoverUpgrade = fn;
   }
-  function enqueueRecheck(catId) {
+  function enqueueRecheck(catId, { background = false } = {}) {
     if (recheckQueued.has(catId)) return;
     const cover = getCover(catId);
     if (!shouldRecheck(cover, Date.now())) return;
     recheckQueued.add(catId);
     enqueue("recheck", async () => {
+      if (background && !claimRecheckLease()) return true;
+      const fresh = getCover(catId);
+      if (!shouldRecheck(fresh, Date.now())) return true;
       const meta = (await fetchLatestEpMap())[catId];
-      const title = meta && meta.name || cover.local || cover.name;
+      const title = meta && meta.name || fresh.local || fresh.name;
       if (!title) return true;
       const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true });
       if (res.data) {
         const data = { ...res.data, local: title };
         setCover(catId, data);
         if (onCoverUpgrade) onCoverUpgrade(catId, data);
+        notifyCoverUpgrade(catId);
         console.info("[anime1-plus] 封面複查轉正：", title);
       } else {
-        setCover(catId, { ...cover, deepTried: Date.now() });
+        setCover(catId, { ...fresh, deepTried: Date.now() });
       }
       return true;
-    });
+    }, catId);
   }
+  var resweepTimer = null;
+  var RESWEEP_MS = 15e3;
   async function recheckTentativeCovers({ orderHint } = {}) {
     const now = Date.now();
     let targets = getTentativeCovers().filter((c) => shouldRecheck(c, now) && !recheckQueued.has(c.catId));
     if (!targets.length) return;
-    if (Array.isArray(orderHint) && orderHint.length) {
-      const rank = new Map(orderHint.map((k, i) => [k, i]));
+    if (!claimRecheckLease()) {
+      if (!resweepTimer) {
+        resweepTimer = setTimeout(() => {
+          resweepTimer = null;
+          recheckTentativeCovers({ orderHint });
+        }, RESWEEP_MS);
+      }
+      return;
+    }
+    const order = [...getRecheckHint() || [], ...Array.isArray(orderHint) ? orderHint : []];
+    if (order.length) {
+      const rank = /* @__PURE__ */ new Map();
+      order.forEach((k, i) => {
+        if (!rank.has(k)) rank.set(k, i);
+      });
       const near = [];
       const rest = [];
       for (const c of targets) (rank.has(c.catId) ? near : rest).push(c);
       near.sort((a, b) => rank.get(a.catId) - rank.get(b.catId));
       targets = [...near, ...rest];
     }
-    for (const c of targets) enqueueRecheck(c.catId);
+    for (const c of targets) enqueueRecheck(c.catId, { background: true });
   }
 
   // src/list.js
@@ -2085,6 +2243,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     injectStyles();
     const seen = /* @__PURE__ */ new WeakSet();
     let trackingPrefetched = false;
+    onCoverUpgradeEvent((catId) => {
+      const cover = getCover(catId);
+      if (cover && cover.cover) repaintCard(catId, cover);
+    });
     const io = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
@@ -2200,6 +2362,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     mountToolbar();
     setupInfiniteScroll();
     prefetchTrackingCovers();
+    const publishHint = throttle(() => setRecheckHint(viewportCatOrder().slice(0, 30)), 1e3);
+    publishHint();
+    window.addEventListener("scroll", publishHint, { passive: true });
   }
   function viewportCatOrder() {
     const vh = window.innerHeight || document.documentElement.clientHeight || 0;

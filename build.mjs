@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 import { mkdirSync } from 'node:fs';
 
-const VERSION = '0.6.18';
+const VERSION = '0.6.20';
 const REPO = 'bakabaka0613/anime1-plus';
 const RAW = `https://raw.githubusercontent.com/${REPO}/main/dist/anime1-plus.user.js`;
 
@@ -25,6 +25,7 @@ const banner = `// ==UserScript==
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_listValues
+// @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        unsafeWindow
 // @connect      api.bgm.tv
