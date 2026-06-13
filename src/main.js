@@ -19,7 +19,6 @@ import {
   injectStyles,
   markCategoryEpisodes,
   mountTrackingPanel,
-  mountSidebarToggle,
   renderLastWatched,
   collapseToSinglePlayer,
   enhanceEpisodeNav,
@@ -204,7 +203,6 @@ function main() {
   injectStyles();
   injectProjectLinks(); // 站方頂部導覽列＋底部加上導向 GitHub 專案的連結（所有頁面）
   mountTrackingPanel();
-  mountSidebarToggle();
 
   const type = getPageType();
   // footer 置底：內容頁（首頁/分類/單集）都套，內容不足一屏時把 #colophon 推到視窗底，消除底端白邊。

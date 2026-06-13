@@ -23,7 +23,6 @@ const DEFAULT_SETTINGS = {
   listThumbs: true, // 列表頁增強（封面/卡片）
   gridView: true, // 列表頁卡片檢視（false = 原始列表）
   cardWidth: 250, // 卡片最小寬度 px
-  sidebarOpen: false, // 右側欄展開（預設折疊）
 };
 
 function loadRoot() {

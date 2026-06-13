@@ -182,14 +182,10 @@ body.a1p-grid-on .a1p-grid-table .a1p-poster{width:100%;aspect-ratio:2/3;object-
 body.a1p-grid-on .a1p-grid-table tbody td:first-child a{display:block;padding:6px 8px 2px;color:#e8e8ea;
   font-weight:600;font-size:13px;line-height:1.3;text-decoration:none}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#7aa2f7}
-/* 右側欄折疊 */
-.a1p-sidebar-toggle{position:fixed;right:0;top:105px;z-index:2147483600;cursor:pointer;
-  border:1px solid #45464c;border-right:none;background:#26272cee;color:#e8e8ea;
-  border-radius:12px 0 0 12px;width:20px;height:56px;padding:0;font-size:15px;line-height:1;
-  display:flex;align-items:center;justify-content:center}
-.a1p-sidebar-toggle:hover{background:#303138}
-body.a1p-sidebar-collapsed #secondary,body.a1p-sidebar-collapsed .widget-area{display:none!important}
-body.a1p-sidebar-collapsed #primary,body.a1p-sidebar-collapsed .content-area{
+/* 右側欄折疊：跟著檢視模式走——卡片檢視（body.a1p-grid-on）隱藏側欄讓海報網格更寬，
+   切回原始列表則顯示。不再有獨立的折疊按鈕。*/
+body.a1p-grid-on #secondary,body.a1p-grid-on .widget-area{display:none!important}
+body.a1p-grid-on #primary,body.a1p-grid-on .content-area{
   width:100%!important;max-width:100%!important;flex:1 1 100%!important;float:none!important}
 /* footer 置底（內容頁 首頁/分類/單集 皆套）：內容不足一屏時把 #colophon 推到視窗底，消除底端白邊。
    只改 #page 直接子層的排版，內部 float 兩欄佈局不受影響。*/
@@ -207,7 +203,6 @@ body.a1p-stick-footer #page.site>#colophon{flex-shrink:0;margin-top:auto}
   background:#000!important;z-index:2147483600!important}
 .a1p-webfull video,.a1p-webfull .vjs-tech{width:100%!important;height:100%!important;object-fit:contain!important}
 body.a1p-webfull-lock{overflow:hidden!important}
-body.a1p-webfull-lock .a1p-sidebar-toggle,
 body.a1p-webfull-lock .a1p-fab,
 body.a1p-webfull-lock .a1p-panel{display:none!important}
 .a1p-webfull-btn{position:absolute!important;top:10px!important;right:10px!important;z-index:2147483000!important;
@@ -682,28 +677,6 @@ export function renderLastWatched(animeKey, mountEl) {
   bar.className = 'a1p-last';
   bar.innerHTML = `<span>${text}</span>${link}`;
   mountEl.parentNode.insertBefore(bar, mountEl);
-}
-
-// ---- 右側欄折疊（搜尋/近期更新等 widget 很佔版面，預設折疊）----
-export function mountSidebarToggle() {
-  const aside = document.querySelector('#secondary, .widget-area');
-  if (!aside || document.querySelector('.a1p-sidebar-toggle')) return;
-  injectStyles();
-  let open = !!getSettings().sidebarOpen;
-  const btn = document.createElement('button');
-  btn.className = 'a1p-sidebar-toggle';
-  const apply = () => {
-    document.body.classList.toggle('a1p-sidebar-collapsed', !open);
-    btn.textContent = open ? '❯' : '❮';
-    btn.title = open ? '隱藏側欄' : '顯示側欄';
-  };
-  btn.onclick = () => {
-    open = !open;
-    setSettings({ sidebarOpen: open });
-    apply();
-  };
-  document.body.appendChild(btn);
-  apply();
 }
 
 // ---- 追番面板 ----
