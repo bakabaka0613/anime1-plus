@@ -17,6 +17,7 @@ function cnToNum(s) {
 
 const ROMAN = { Ⅱ: 2, Ⅲ: 3, Ⅳ: 4, Ⅴ: 5, Ⅵ: 6 };
 const ROMAN_ASCII = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
+const ORDINAL_WORD = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6 };
 
 // 抽尾端 [..] 集數標記。回傳 { ep, epRaw, rest }
 function extractEpisode(title) {
@@ -51,6 +52,7 @@ function extractSeason(rest) {
     { re: /\b(\d+)\s*(?:st|nd|rd|th)\s+season\b/i, num: (m) => parseInt(m[1], 10) },
     { re: /\bseason\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
     { re: /\bseason\s+(iii|ii|iv|vi|v|i)\b/i, num: (m) => ROMAN_ASCII[m[1].toLowerCase()] },
+    { re: /\b(first|second|third|fourth|fifth|sixth)\s+season\b/i, num: (m) => ORDINAL_WORD[m[1].toLowerCase()] },
     { re: /\bpart\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
     { re: /\b(?:the\s+)?final\s+season\b/i, num: () => 2 },
     { re: /[ⅡⅢⅣⅤⅥ]/, num: (m) => ROMAN[m[0]] },
@@ -71,6 +73,7 @@ function normalizeSpace(s) {
   // 季度標記移除後可能殘留空括號（如「Season II」與「（第2季）」併存清完剩「() （）」）→ 一併去掉
   return s
     .replace(/[（(]\s*[）)]/g, '')
+    .replace(/\s[–\-—]+(?=\s|$)/g, '') // 季度標記移除後殘留的孤立破折號（如「-SECOND SEASON-」清完剩「act2 --」）；不碰名稱內連字號（K-ON）
     .replace(/\s+/g, ' ')
     .trim();
 }

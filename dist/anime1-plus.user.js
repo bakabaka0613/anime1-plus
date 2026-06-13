@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.17
+// @version      0.6.18
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -150,6 +150,7 @@
   }
   var ROMAN = { "Ⅱ": 2, "Ⅲ": 3, "Ⅳ": 4, "Ⅴ": 5, "Ⅵ": 6 };
   var ROMAN_ASCII = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6 };
+  var ORDINAL_WORD = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6 };
   function extractEpisode(title) {
     const m = title.match(/\[([^\]]*)\]\s*$/);
     if (!m) return { ep: null, epRaw: null, rest: title.trim() };
@@ -176,6 +177,7 @@
       { re: /\b(\d+)\s*(?:st|nd|rd|th)\s+season\b/i, num: (m) => parseInt(m[1], 10) },
       { re: /\bseason\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
       { re: /\bseason\s+(iii|ii|iv|vi|v|i)\b/i, num: (m) => ROMAN_ASCII[m[1].toLowerCase()] },
+      { re: /\b(first|second|third|fourth|fifth|sixth)\s+season\b/i, num: (m) => ORDINAL_WORD[m[1].toLowerCase()] },
       { re: /\bpart\s*(\d+)\b/i, num: (m) => parseInt(m[1], 10) },
       { re: /\b(?:the\s+)?final\s+season\b/i, num: () => 2 },
       { re: /[ⅡⅢⅣⅤⅥ]/, num: (m) => ROMAN[m[0]] }
@@ -192,7 +194,7 @@
     return { seasonNum, rest: out };
   }
   function normalizeSpace(s) {
-    return s.replace(/[（(]\s*[）)]/g, "").replace(/\s+/g, " ").trim();
+    return s.replace(/[（(]\s*[）)]/g, "").replace(/\s[–\-—]+(?=\s|$)/g, "").replace(/\s+/g, " ").trim();
   }
   function parseTitle(raw) {
     const title = String(raw || "").trim();
