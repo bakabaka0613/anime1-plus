@@ -193,6 +193,17 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   preventDefault + clear selection on show). Fade in/out (`a1p-tags-fade(out)`); on narrow cards tags wrap
   inside the chip (no horizontal scroll, styled thin vertical scrollbar). `getData()` is read at trigger
   time so backfilled/upgraded tags show. Wired per poster in `list.js` via `() => getCover(ref.key)`.
+- **Anime-info cover card** (`renderCoverCard` in `ui.js`, the category/single-episode page card — distinct
+  from the home overlay above): the same cached `data` (carries `tags`/`metaTags`/`bucket`) is rendered
+  inline (0.6.51–0.6.55). Subtitle is the **JP original name only** (`data.name`) — the Simplified
+  `name_cn` duplicates the Traditional main title, so it's dropped; subtitle is skipped when it equals the
+  main title and `-webkit-line-clamp:2`-ed (`.a1p-card .a1p-sub`). The **air-season** `data.bucket`
+  (e.g. `2024冬`) shows as a neutral `.a1p-badge.season` next to the confidence badge (only when present —
+  needs `date` in cache, may await `enqueueMetaBackfill`). Tags are flat chips (`.a1p-card-tags`, reusing
+  `.a1p-cover-tag`/`.meta` but smaller: 11px) **clamped to 2 rows** via `max-height:48px;overflow:hidden`
+  (chip `white-space:nowrap` so the row-height math holds; the home overlay chips keep wrapping). The cover
+  `<img>` is **1.5×** on desktop (`@media (min-width:769px)`, the site's Basic Shop breakpoint:
+  96×136 → 144×204). All inputs are already in the cover cache — no extra request.
 
 ## TDD
 
