@@ -103,10 +103,10 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
 .a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
 .a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:99px;white-space:nowrap;
-  background:rgba(56,58,74,.82);color:#e3e6ee;border:1px solid rgba(255,255,255,.14);
-  box-shadow:0 1px 3px rgba(0,0,0,.28)}
-.a1p-cover-tag.meta{font-weight:600;color:#f2f6ff;border-color:rgba(160,188,255,.45);
-  background:linear-gradient(135deg,#5b78d6,#7c5cc4)}
+  background:rgba(28,30,40,.92);color:#f1f3f9;border:1px solid rgba(255,255,255,.2);
+  box-shadow:0 1px 3px rgba(0,0,0,.36)}
+.a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(180,202,255,.6);
+  background:linear-gradient(135deg,#4f6ee0,#8a4fd6)}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
