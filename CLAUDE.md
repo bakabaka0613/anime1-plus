@@ -107,7 +107,7 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   the sort and which terminal label shows). **Hold Shift + click 📺** to enter manage mode: per anime a
   ✓ "mark watched" button (`markAnimeWatched` → marks every known ep done so it drops to the finished
   section; hidden when already caught-up) and a 🗑 "delete progress" button. Manage mode is also reachable
-  by long-pressing 📺 for 3s (touch devices). Plain open has no buttons to avoid mis-clicks. Hovering a
+  by long-pressing 📺 for 1.5s (touch devices). Plain open has no buttons to avoid mis-clicks. Hovering a
   row's small cover thumbnail pops a larger preview (floated outside the panel since it has `overflow:auto`).
 - 🗑 is a SYNCED soft-delete (`deleteAnimeSynced`), not a hard delete: a hard delete gets resurrected by
   the cloud pull-merge. Instead it zeroes currentTime and stamps `meta[catId].deletedAt = now`. `isDeleted`
@@ -162,6 +162,37 @@ User-facing strings are Traditional Chinese; code/comments/commits are English.
   (劇場版/剧场版, 總集篇/总集篇, …): candidate `name_cn` is Simplified and `nameScore` parses it too, so a
   繁-only list would strip asymmetrically and dilute similarity. Keeps `baseName` clean for search+similarity.
 - Confidence-low covers: still show the image but add a "待確認" corner badge to nudge a manual pick.
+- **18禁 / anime1.pw covers** (`isAdultLink` in `util.js`): home-list rows whose link points to
+  `anime1.pw` are adult specials (`catId=0` in `animelist.json`, name is `<a href="https://anime1.pw/…">`).
+  The script only `@match`es `anime1.me`, so the list grid is the only place they appear. `list.js`
+  `enhanceRow` short-circuits them: a self-contained 18禁 SVG cover (no Bangumi lookup / queue / cache),
+  click still opens anime1.pw. `animeRef` returns null for pw links so they're kept out of the `?cat=`
+  key space (was mis-keyed `cat:NN`), recheck hints, and bucket filtering.
+- **Cover tags / air-date are cached** (`toCoverData` stores `date`, `bucket`, `tags`, `metaTags`):
+  the v0 search subject already carries `date`/`tags`/`meta_tags` → zero extra request for new lookups.
+  `buildCoverTags(rawTags, rawMetaTags)` (`util.js`, pure/idempotent, accepts both `[{name,count}]` and
+  `string[]`) cleans them: toTraditional, dedupe (Bangumi sometimes returns doubled meta_tags), metaTags
+  drop 'TV'/'日本', tags drop time-info (`isTimeTag`: year/month/season — already in `date`/`bucket`),
+  'TV', and anything in meta_tags → the two lists are disjoint. Covers are NOT synced, so this is local.
+  Existing confident covers never re-look-up (cover.js short-circuit) → `enqueueMetaBackfill` (cover.js)
+  is a render-driven lazy backfill: lowest-priority `meta` coverQueue tier fetches `getSubjectMeta`
+  (`/v0/subjects/{id}`) by the stored `subjectId`, pure-enriches (never touches subjectId/cover),
+  `needsCoverMeta` + `metaTriedAt` (7-day) gate it. Triggered where covers render (list cards, tracking
+  prefetch, cover card).
+- **Air-date season-bucket match bonus** (`match.js`, additive, NO penalty): `rankCandidates(parsed,
+  year, subjects, anime1Buckets?)` 4th optional param. A candidate whose `dateToBucket(subject.date)`
+  matches anime1's season bucket gets `+BUCKET_BONUS` (0.08) — small (< name weight 0.7) and added only to
+  `score`, not `breakdown.name`, so a name-mismatch can't cross the confidence gate. Buckets come from
+  `bucketMap[key]` (list) or `seasonBuckets(meta.year, meta.season)` (recheck/category). Omitting the param
+  = unchanged behavior. Guard tests in `test/match.test.js`.
+- **Cover TAG overlay** (`attachCoverTagsOverlay` in `ui.js`): desktop **right-click** a home poster →
+  overlay of metaTags-then-tags over the cover, `mouseleave` hides. Touch: **long-press ~480ms** shows,
+  **tap anywhere** hides (capture-phase `click` closer that also swallows the closing tap so it can't
+  navigate). `lastPointerType` splits the two so `contextmenu` doesn't double-fire on mobile; native
+  long-press menu + text selection suppressed (`-webkit-touch-callout`/`user-select:none` + `selectstart`
+  preventDefault + clear selection on show). Fade in/out (`a1p-tags-fade(out)`); on narrow cards tags wrap
+  inside the chip (no horizontal scroll, styled thin vertical scrollbar). `getData()` is read at trigger
+  time so backfilled/upgraded tags show. Wired per poster in `list.js` via `() => getCover(ref.key)`.
 
 ## TDD
 
