@@ -1,10 +1,11 @@
 // 共享封面抓取排程：單一序列佇列、限流、不並發。純調度（不含 DOM / lookup 邏輯）。
 // 三個優先級共用同一條序列，才能真正限流：可見海報 > 追番補抓 > 待確認背景複查。
 // 每層各自最小間隔；高優先級可在低優先的等待中插隊。
-const TIERS = ['visible', 'tracking', 'recheck'];
-const GAP = { visible: 500, tracking: 500, recheck: 5000 }; // 兩次請求間隔（ms）
+// meta＝既有快取「補抓 tags/放送日」的渲染驅動懶補，最低優先（單發輕量 GET，間隔放寬避免擾動主流程）。
+const TIERS = ['visible', 'tracking', 'meta', 'recheck'];
+const GAP = { visible: 500, tracking: 500, meta: 1200, recheck: 5000 }; // 兩次請求間隔（ms）
 const MAX_RETRIES = 2;
-const q = { visible: [], tracking: [], recheck: [] };
+const q = { visible: [], tracking: [], meta: [], recheck: [] };
 const selectors = {}; // tier → (jobs) => index：自訂「取下一個」的挑選（預設 FIFO）。供 recheck 依即時視窗挑最近者。
 let pumping = false;
 let lastRunAt = 0;

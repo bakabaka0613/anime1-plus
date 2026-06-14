@@ -1,5 +1,5 @@
 // 封面解析協調：解析標題 → Bangumi 搜尋 → 嚴謹匹配 → 快取 → 渲染。
-import { searchAnime, coverUrl, getSubjectAliases } from './bangumi.js';
+import { searchAnime, coverUrl, getSubjectAliases, getSubjectMeta } from './bangumi.js';
 import { rankCandidates } from './match.js';
 import { parseTitle } from './parse.js';
 import {
@@ -10,6 +10,10 @@ import {
   splitAliasNames,
   evaluateRecheckLease,
   pickByHint,
+  dateToBucket,
+  pickTagNames,
+  needsCoverMeta,
+  seasonBuckets,
 } from './util.js';
 // 提醒：相似度比對主用完整 baseName；分段（titleSearchSegments）僅供別名比對補強，見 matchByAlias。
 import {
@@ -64,6 +68,11 @@ export function toCoverData(scored, manual = false) {
     name_cn: s.name_cn,
     rating: (s.rating && s.rating.score) || null, // Bangumi 用戶評分（0–10），0/無 → null
     score: scored.score, // 注意：這是我們的比對信心分數，非 Bangumi 評分
+    // 放送日／放送季桶／標籤：v0 搜尋結果本就帶 date/tags/meta_tags，順手存進快取，零額外請求。
+    date: s.date || s.air_date || null,
+    bucket: dateToBucket(s.date || s.air_date),
+    tags: pickTagNames(s.tags),
+    metaTags: Array.isArray(s.meta_tags) ? s.meta_tags : [],
     manual,
   };
 }
@@ -72,13 +81,14 @@ export function toCoverData(scored, manual = false) {
  * 純查詢（不渲染）：回傳快取或經搜尋匹配的封面資料，供卡片與列表縮圖共用。
  * @returns {Promise<{cached:boolean, parsed:object, data:object|null, ranked:Array, confident:boolean}>}
  */
-export async function lookupCover({ animeKey, title, year, deep = false }) {
+export async function lookupCover({ animeKey, title, year, deep = false, buckets }) {
   const parsed = parseTitle(title);
   const cached = getCover(animeKey);
   // tentative 是列表頁的低信心暫定封面 → 分類頁不直接採用，重新嚴謹判斷
   if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
   const subjects = await searchAnime(parsed.baseName);
-  let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
+  // buckets（anime1 年+季桶）：相符候選獲小幅加分（純加不減），有則傳、無則 undefined（行為不變）。
+  let { ranked, best, confident } = rankCandidates(parsed, year, subjects, buckets);
   // 信心不足時的補救都只在分類頁 deep 模式做（避免列表頁大量請求；列表頁待確認交由背景複查 deep 再挖）。
   if (deep) {
     let pool = subjects;
@@ -99,7 +109,7 @@ export async function lookupCover({ animeKey, title, year, deep = false }) {
         }
         if (merged.length > subjects.length) {
           pool = merged;
-          ({ ranked, best, confident } = rankCandidates(parsed, year, merged));
+          ({ ranked, best, confident } = rankCandidates(parsed, year, merged, buckets));
         }
       }
     }
@@ -123,7 +133,10 @@ export async function lookupCover({ animeKey, title, year, deep = false }) {
  */
 export async function resolveCover({ animeKey, title, year, mountEl }) {
   if (!mountEl) return;
-  const res = await lookupCover({ animeKey, title, year, deep: true });
+  // anime1 年+季桶（animeKey 為 cat:NN，與 fetchLatestEpMap 同 key 空間）→ 相符候選獲小幅加分。
+  const listMeta = (await fetchLatestEpMap())[animeKey];
+  const buckets = listMeta ? seasonBuckets(listMeta.year, listMeta.season) : undefined;
+  const res = await lookupCover({ animeKey, title, year, deep: true, buckets });
   const { parsed } = res;
   const local = title; // anime1 原始繁體名（Bangumi 多為簡體，故另存顯示）
 
@@ -137,11 +150,12 @@ export async function resolveCover({ animeKey, title, year, mountEl }) {
 
   const refetchAndPick = async () => {
     const subjects = await searchAnime(parsed.baseName);
-    showPicker(rankCandidates(parsed, year, subjects).ranked);
+    showPicker(rankCandidates(parsed, year, subjects, buckets).ranked);
   };
 
   if (res.cached) {
     // 舊快取可能沒有 local → 用當前頁面的繁體名補上
+    if (needsCoverMeta(res.data, Date.now())) enqueueMetaBackfill(animeKey); // 既有快取缺 tags/放送日 → 背景補抓
     renderCoverCard(mountEl, { ...res.data, local: res.data.local || local }, { onChange: refetchAndPick });
   } else if (res.data) {
     const data = { ...res.data, local };
@@ -198,7 +212,8 @@ export function enqueueRecheck(catId, { background = false } = {}) {
     const meta = (await fetchLatestEpMap())[catId]; // 權威繁體名/年份（已 5 分快取，cat:{id} keyed）
     const title = (meta && meta.name) || fresh.local || fresh.name;
     if (!title) return true; // 無名可查 → 視為完成、不重試
-    const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true });
+    const buckets = meta ? seasonBuckets(meta.year, meta.season) : undefined; // 年+季桶 → 相符候選小幅加分
+    const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true, buckets });
     if (res.data) {
       const data = { ...res.data, local: title };
       setCover(catId, data); // 升級轉正（脫 tentative）
@@ -210,6 +225,37 @@ export function enqueueRecheck(catId, { background = false } = {}) {
     }
     return true;
   }, catId); // 帶 catId → recheck selector 可依即時視窗 hint 挑最近者
+}
+
+const metaBackfillQueued = new Set(); // 本 session 已排入 meta 補抓的 catId（去重）
+
+/**
+ * 既有快取「補抓 tags/放送日」的渲染驅動懶補（最低優先 meta 層）：
+ * 用已存的 subjectId 打 /v0/subjects/{id} 拿 date+tags+meta_tags，純補充進快取（**絕不改 subjectId/cover**），
+ * 取不到 date → 戳 metaTriedAt（7 天內不重試）。去重 + needsCoverMeta 雙重守門。前景驅動、不需跨分頁租約。
+ */
+export function enqueueMetaBackfill(catId) {
+  if (metaBackfillQueued.has(catId)) return;
+  if (!needsCoverMeta(getCover(catId), Date.now())) return;
+  metaBackfillQueued.add(catId);
+  enqueue('meta', async () => {
+    // 執行時重讀最新快照（非排入時舊值）：別的分頁/job 可能已補過 → 免網路跳過，且不覆蓋他人升級。
+    const fresh = getCover(catId);
+    if (!needsCoverMeta(fresh, Date.now())) return true;
+    const m = await getSubjectMeta(fresh.subjectId);
+    if (m && m.date) {
+      setCover(catId, {
+        ...fresh, // 保留既有 subjectId/cover/name/score…，僅補充下列欄位
+        date: m.date,
+        bucket: dateToBucket(m.date),
+        tags: pickTagNames(m.tags),
+        metaTags: Array.isArray(m.meta_tags) ? m.meta_tags : [],
+      });
+    } else {
+      setCover(catId, { ...fresh, metaTriedAt: Date.now() }); // 取不到 → 7 天內不重試（用最新值）
+    }
+    return true;
+  }, catId);
 }
 
 let resweepTimer = null; // 非持有分頁等待租約釋出的重掃計時器（避免堆疊多個）

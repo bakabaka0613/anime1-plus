@@ -47,6 +47,8 @@ async function searchLegacy(keyword, limit) {
     date: s.air_date || s.date,
     images: s.images,
     rating: s.rating,
+    tags: Array.isArray(s.tags) ? s.tags : [],
+    meta_tags: Array.isArray(s.meta_tags) ? s.meta_tags : [],
   }));
 }
 
@@ -111,6 +113,27 @@ export async function getSubjectAliases(id) {
     return out.filter((s) => typeof s === 'string' && s.trim());
   } catch {
     return [];
+  }
+}
+
+// 取某條目的放送日與標籤（背景補抓既有快取用）：打與 getSubjectAliases 同一支詳情端點。
+// 回 { date, tags, meta_tags }；失敗回 null（呼叫端據此戳 metaTriedAt 不重試）。
+export async function getSubjectMeta(id) {
+  try {
+    const res = await gmFetch({
+      method: 'GET',
+      url: `https://api.bgm.tv/v0/subjects/${id}`,
+      headers: { Accept: 'application/json', 'User-Agent': UA },
+    });
+    if (res.status < 200 || res.status >= 300) return null;
+    const json = JSON.parse(res.responseText);
+    return {
+      date: json.date || null,
+      tags: Array.isArray(json.tags) ? json.tags : [],
+      meta_tags: Array.isArray(json.meta_tags) ? json.meta_tags : [],
+    };
+  } catch {
+    return null;
   }
 }
 

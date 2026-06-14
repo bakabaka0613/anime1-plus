@@ -459,3 +459,41 @@ export function seasonBuckets(r3, r4) {
   if (years.length === 1) return seasons.map((se) => years[0] + se); // 同年多季
   return seasons.map((se) => years[0] + se); // 季<年（run-over）→ 取首年
 }
+
+// Bangumi 放送日（"YYYY-MM-DD"）→ 年+季桶（如 '2023秋'），與 seasonBuckets 同格式可直接比對。
+// 月→季：12/1/2→冬、3/4/5→春、6/7/8→夏、9/10/11→秋。12 月歸入隔年冬（貼合 anime1 cours 標法，
+// 如 2023-12 → 2024冬）。解析不出 → null。比對只「加分不扣分」，季度推估略有偏差也只是少加分、無害。
+export function dateToBucket(dateStr) {
+  const m = String(dateStr || '').match(/(\d{4})-(\d{1,2})/);
+  if (!m) return null;
+  let year = parseInt(m[1], 10);
+  const mon = parseInt(m[2], 10);
+  if (!mon || mon < 1 || mon > 12) return null;
+  let season;
+  if (mon === 12 || mon <= 2) {
+    season = '冬';
+    if (mon === 12) year += 1; // 12 月＝隔年冬 cours
+  } else if (mon <= 5) season = '春';
+  else if (mon <= 8) season = '夏';
+  else season = '秋';
+  return `${year}${season}`;
+}
+
+// 從 Bangumi tags（[{name,count}]，API 已依 count 排序）取前 n 個 tag 名稱。防呆排序＋去空白。
+export function pickTagNames(tags, n = 10) {
+  if (!Array.isArray(tags)) return [];
+  return tags
+    .filter((t) => t && typeof t.name === 'string' && t.name.trim())
+    .slice()
+    .sort((a, b) => (b.count || 0) - (a.count || 0))
+    .slice(0, n)
+    .map((t) => t.name.trim());
+}
+
+// 既有封面快取是否該背景補抓 tags/放送日：有 subjectId、尚未存 date，且 metaTriedAt 不在 retryMs 內。
+// 用於渲染驅動懶補（cover.js enqueueMetaBackfill 守門），避免對同一條目反覆打 Bangumi。
+export function needsCoverMeta(cover, now, retryMs = 7 * 24 * 60 * 60 * 1000) {
+  if (!cover || !cover.subjectId || cover.date) return false;
+  if (cover.metaTriedAt && now - cover.metaTriedAt < retryMs) return false;
+  return true;
+}

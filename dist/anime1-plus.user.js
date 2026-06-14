@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.38
+// @version      0.6.39
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -544,6 +544,30 @@
     if (years.length === seasons.length) return seasons.map((se, i) => years[i] + se);
     if (years.length === 1) return seasons.map((se) => years[0] + se);
     return seasons.map((se) => years[0] + se);
+  }
+  function dateToBucket(dateStr) {
+    const m = String(dateStr || "").match(/(\d{4})-(\d{1,2})/);
+    if (!m) return null;
+    let year = parseInt(m[1], 10);
+    const mon = parseInt(m[2], 10);
+    if (!mon || mon < 1 || mon > 12) return null;
+    let season;
+    if (mon === 12 || mon <= 2) {
+      season = "冬";
+      if (mon === 12) year += 1;
+    } else if (mon <= 5) season = "春";
+    else if (mon <= 8) season = "夏";
+    else season = "秋";
+    return `${year}${season}`;
+  }
+  function pickTagNames(tags, n = 10) {
+    if (!Array.isArray(tags)) return [];
+    return tags.filter((t) => t && typeof t.name === "string" && t.name.trim()).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, n).map((t) => t.name.trim());
+  }
+  function needsCoverMeta(cover, now, retryMs = 7 * 24 * 60 * 60 * 1e3) {
+    if (!cover || !cover.subjectId || cover.date) return false;
+    if (cover.metaTriedAt && now - cover.metaTriedAt < retryMs) return false;
+    return true;
   }
 
   // src/store.js
@@ -2043,7 +2067,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       name_cn: s.name_cn,
       date: s.air_date || s.date,
       images: s.images,
-      rating: s.rating
+      rating: s.rating,
+      tags: Array.isArray(s.tags) ? s.tags : [],
+      meta_tags: Array.isArray(s.meta_tags) ? s.meta_tags : []
     }));
   }
   async function searchOnce(keyword, limit) {
@@ -2100,6 +2126,24 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       return [];
     }
   }
+  async function getSubjectMeta(id) {
+    try {
+      const res = await gmFetch({
+        method: "GET",
+        url: `https://api.bgm.tv/v0/subjects/${id}`,
+        headers: { Accept: "application/json", "User-Agent": UA }
+      });
+      if (res.status < 200 || res.status >= 300) return null;
+      const json = JSON.parse(res.responseText);
+      return {
+        date: json.date || null,
+        tags: Array.isArray(json.tags) ? json.tags : [],
+        meta_tags: Array.isArray(json.meta_tags) ? json.meta_tags : []
+      };
+    } catch {
+      return null;
+    }
+  }
   function coverUrl(subject) {
     const img = subject && subject.images;
     if (!img) return null;
@@ -2110,6 +2154,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   var W_NAME = 0.7;
   var W_YEAR = 0.2;
   var W_SEASON = 0.1;
+  var BUCKET_BONUS = 0.08;
   var CONFIDENT_SCORE = 0.6;
   var CONFIDENT_MARGIN = 0.1;
   var CONFIDENT_NAME = 0.5;
@@ -2146,15 +2191,21 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (diff === 1) return 0.5;
     return 0;
   }
-  function scoreCandidate(parsed, anime1Year, subject) {
+  function bucketBonus(subject, anime1Buckets) {
+    if (!Array.isArray(anime1Buckets) || !anime1Buckets.length) return 0;
+    const candBucket = dateToBucket(subject.date || subject.air_date);
+    return candBucket && anime1Buckets.includes(candBucket) ? BUCKET_BONUS : 0;
+  }
+  function scoreCandidate(parsed, anime1Year, subject, anime1Buckets) {
     const name = nameScore(parsed, subject);
     const year = yearScore(parsed, subject, anime1Year);
     const season = seasonScore(parsed, subject);
-    const score = name * W_NAME + year * W_YEAR + season * W_SEASON;
-    return { subject, score, breakdown: { name, year, season } };
+    const bucket = bucketBonus(subject, anime1Buckets);
+    const score = name * W_NAME + year * W_YEAR + season * W_SEASON + bucket;
+    return { subject, score, breakdown: { name, year, season, bucket } };
   }
-  function rankCandidates(parsed, anime1Year, subjects) {
-    const ranked = (subjects || []).map((s) => scoreCandidate(parsed, anime1Year, s)).sort((a, b) => b.score - a.score);
+  function rankCandidates(parsed, anime1Year, subjects, anime1Buckets) {
+    const ranked = (subjects || []).map((s) => scoreCandidate(parsed, anime1Year, s, anime1Buckets)).sort((a, b) => b.score - a.score);
     if (!ranked.length) {
       return { ranked, best: null, confident: false, needConfirm: true };
     }
@@ -2166,10 +2217,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
 
   // src/coverQueue.js
-  var TIERS = ["visible", "tracking", "recheck"];
-  var GAP = { visible: 500, tracking: 500, recheck: 5e3 };
+  var TIERS = ["visible", "tracking", "meta", "recheck"];
+  var GAP = { visible: 500, tracking: 500, meta: 1200, recheck: 5e3 };
   var MAX_RETRIES = 2;
-  var q = { visible: [], tracking: [], recheck: [] };
+  var q = { visible: [], tracking: [], meta: [], recheck: [] };
   var selectors = {};
   var pumping = false;
   var lastRunAt = 0;
@@ -2242,15 +2293,20 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       // Bangumi 用戶評分（0–10），0/無 → null
       score: scored.score,
       // 注意：這是我們的比對信心分數，非 Bangumi 評分
+      // 放送日／放送季桶／標籤：v0 搜尋結果本就帶 date/tags/meta_tags，順手存進快取，零額外請求。
+      date: s.date || s.air_date || null,
+      bucket: dateToBucket(s.date || s.air_date),
+      tags: pickTagNames(s.tags),
+      metaTags: Array.isArray(s.meta_tags) ? s.meta_tags : [],
       manual
     };
   }
-  async function lookupCover({ animeKey, title, year, deep = false }) {
+  async function lookupCover({ animeKey, title, year, deep = false, buckets }) {
     const parsed = parseTitle(title);
     const cached = getCover(animeKey);
     if (cached && !cached.tentative) return { cached: true, parsed, data: cached, ranked: [], confident: true };
     const subjects = await searchAnime(parsed.baseName);
-    let { ranked, best, confident } = rankCandidates(parsed, year, subjects);
+    let { ranked, best, confident } = rankCandidates(parsed, year, subjects, buckets);
     if (deep) {
       let pool = subjects;
       if (!confident) {
@@ -2268,7 +2324,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           }
           if (merged.length > subjects.length) {
             pool = merged;
-            ({ ranked, best, confident } = rankCandidates(parsed, year, merged));
+            ({ ranked, best, confident } = rankCandidates(parsed, year, merged, buckets));
           }
         }
       }
@@ -2285,7 +2341,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
   async function resolveCover({ animeKey, title, year, mountEl }) {
     if (!mountEl) return;
-    const res = await lookupCover({ animeKey, title, year, deep: true });
+    const listMeta = (await fetchLatestEpMap())[animeKey];
+    const buckets = listMeta ? seasonBuckets(listMeta.year, listMeta.season) : void 0;
+    const res = await lookupCover({ animeKey, title, year, deep: true, buckets });
     const { parsed } = res;
     const local = title;
     const showPicker = (ranked) => {
@@ -2297,9 +2355,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     };
     const refetchAndPick = async () => {
       const subjects = await searchAnime(parsed.baseName);
-      showPicker(rankCandidates(parsed, year, subjects).ranked);
+      showPicker(rankCandidates(parsed, year, subjects, buckets).ranked);
     };
     if (res.cached) {
+      if (needsCoverMeta(res.data, Date.now())) enqueueMetaBackfill(animeKey);
       renderCoverCard(mountEl, { ...res.data, local: res.data.local || local }, { onChange: refetchAndPick });
     } else if (res.data) {
       const data = { ...res.data, local };
@@ -2334,7 +2393,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const meta = (await fetchLatestEpMap())[catId];
       const title = meta && meta.name || fresh.local || fresh.name;
       if (!title) return true;
-      const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true });
+      const buckets = meta ? seasonBuckets(meta.year, meta.season) : void 0;
+      const res = await lookupCover({ animeKey: catId, title, year: meta ? meta.year : null, deep: true, buckets });
       if (res.data) {
         const data = { ...res.data, local: title };
         setCover(catId, data);
@@ -2343,6 +2403,30 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         console.info("[anime1-plus] 封面複查轉正：", title);
       } else {
         setCover(catId, { ...fresh, deepTried: Date.now() });
+      }
+      return true;
+    }, catId);
+  }
+  var metaBackfillQueued = /* @__PURE__ */ new Set();
+  function enqueueMetaBackfill(catId) {
+    if (metaBackfillQueued.has(catId)) return;
+    if (!needsCoverMeta(getCover(catId), Date.now())) return;
+    metaBackfillQueued.add(catId);
+    enqueue("meta", async () => {
+      const fresh = getCover(catId);
+      if (!needsCoverMeta(fresh, Date.now())) return true;
+      const m = await getSubjectMeta(fresh.subjectId);
+      if (m && m.date) {
+        setCover(catId, {
+          ...fresh,
+          // 保留既有 subjectId/cover/name/score…，僅補充下列欄位
+          date: m.date,
+          bucket: dateToBucket(m.date),
+          tags: pickTagNames(m.tags),
+          metaTags: Array.isArray(m.meta_tags) ? m.meta_tags : []
+        });
+      } else {
+        setCover(catId, { ...fresh, metaTriedAt: Date.now() });
       }
       return true;
     }, catId);
@@ -2462,9 +2546,11 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         markCover(img, data);
         markRating(img, data);
       };
-      const res = await lookupCover({ animeKey: key, title: name, year });
+      const buckets = bucketMap ? bucketMap[key] : void 0;
+      const res = await lookupCover({ animeKey: key, title: name, year, buckets });
       if (res.cached) {
         paint(res.data);
+        if (needsCoverMeta(res.data, Date.now())) enqueueMetaBackfill(key);
         return true;
       }
       if (res.data) {
@@ -2491,7 +2577,11 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     async function prefetchTrackingCovers() {
       if (trackingPrefetched) return;
       trackingPrefetched = true;
-      const need = getInProgressList().filter((x) => !(x.cover && x.cover.cover));
+      const inProgress = getInProgressList();
+      for (const x of inProgress) {
+        if (x.cover && x.cover.cover && needsCoverMeta(x.cover, Date.now())) enqueueMetaBackfill(x.catId);
+      }
+      const need = inProgress.filter((x) => !(x.cover && x.cover.cover));
       if (!need.length) return;
       const infoMap = await fetchLatestEpMap();
       for (const x of need) {
@@ -2560,6 +2650,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         markCover(img, cached);
         markRating(img, cached);
         if (cached.tentative) enqueueRecheck(ref.key);
+        if (needsCoverMeta(cached, Date.now())) enqueueMetaBackfill(ref.key);
         return;
       }
       img._a1pJob = { img, key: ref.key, name, year: ref.year };

@@ -11,8 +11,16 @@ import {
   onCoverUpgradeEvent,
   setRecheckHint,
 } from './store.js';
-import { lookupCover, toCoverData, enqueueRecheck } from './cover.js';
-import { parseLatestEp, pendingNewEpisodes, cleanTitle, throttle, seasonBuckets, isAdultLink } from './util.js';
+import { lookupCover, toCoverData, enqueueRecheck, enqueueMetaBackfill } from './cover.js';
+import {
+  parseLatestEp,
+  pendingNewEpisodes,
+  cleanTitle,
+  throttle,
+  seasonBuckets,
+  isAdultLink,
+  needsCoverMeta,
+} from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { enqueue } from './coverQueue.js';
 import { injectStyles } from './ui.js';
@@ -128,9 +136,12 @@ export function initListPage() {
       markCover(img, data);
       markRating(img, data);
     };
-    const res = await lookupCover({ animeKey: key, title: name, year });
+    // anime1 年+季桶（bucketMap 由 initBucketFilter 建；未就緒則 undefined → 不加分）→ 相符候選小幅加分。
+    const buckets = bucketMap ? bucketMap[key] : undefined;
+    const res = await lookupCover({ animeKey: key, title: name, year, buckets });
     if (res.cached) {
       paint(res.data);
+      if (needsCoverMeta(res.data, Date.now())) enqueueMetaBackfill(key); // 既有快取缺 tags/放送日 → 背景補抓
       return true;
     }
     if (res.data) {
@@ -163,7 +174,12 @@ export function initListPage() {
   async function prefetchTrackingCovers() {
     if (trackingPrefetched) return;
     trackingPrefetched = true;
-    const need = getInProgressList().filter((x) => !(x.cover && x.cover.cover));
+    const inProgress = getInProgressList();
+    // 已有封面但缺 tags/放送日的追番番 → 背景補抓（與「完全缺封面」分開處理）。
+    for (const x of inProgress) {
+      if (x.cover && x.cover.cover && needsCoverMeta(x.cover, Date.now())) enqueueMetaBackfill(x.catId);
+    }
+    const need = inProgress.filter((x) => !(x.cover && x.cover.cover));
     if (!need.length) return;
     const infoMap = await fetchLatestEpMap(); // 取各番的繁體名/年份（封面查詢需要 title）
     for (const x of need) {
@@ -241,6 +257,7 @@ export function initListPage() {
       markCover(img, cached);
       markRating(img, cached);
       if (cached.tentative) enqueueRecheck(ref.key); // 待確認 → 前景深比對複查（渲染即排，本分頁自做、就近優先）
+      if (needsCoverMeta(cached, Date.now())) enqueueMetaBackfill(ref.key); // 既有快取缺 tags/放送日 → 背景補抓
       return;
     }
     img._a1pJob = { img, key: ref.key, name, year: ref.year };
