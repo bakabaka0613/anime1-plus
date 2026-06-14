@@ -190,7 +190,8 @@ body.a1p-grid-on .a1p-grid-table tbody td{display:block;border:none!important;pa
   font-size:12px;color:#9aa0a6;background:transparent!important;text-align:left}
 body.a1p-grid-on .a1p-grid-table tbody td:first-child{padding:0}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(n+3){display:none}
-body.a1p-grid-on .a1p-grid-table .a1p-poster{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#2a2a30}
+body.a1p-grid-on .a1p-grid-table .a1p-poster{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#2a2a30;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.a1p-grid-on .a1p-grid-table tbody td:first-child a{display:block;padding:6px 8px 2px;color:#e8e8ea;
   font-weight:600;font-size:13px;line-height:1.3;text-decoration:none}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#7aa2f7}
@@ -360,36 +361,99 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
   card.querySelector('.a1p-change').onclick = () => onChange && onChange();
 }
 
-// 右鍵封面圖 → 在圖上疊出 TAG（metaTags 在前、tags 在後）；滑鼠移開即消失。
-// parentEl 須為 position:relative 的容器（如 .a1p-poster-wrap）。getData() 在右鍵當下回最新封面資料
+// 在封面圖上疊出 TAG（metaTags 在前、tags 在後）。
+//   桌機：右鍵叫出、滑鼠移開即消失。
+//   手機：長按（~480ms）叫出、點任意處關閉（沿用專案 pointerdown＋計時器長按慣例，見 mountTrackingPanel）。
+// parentEl 須為 position:relative 的容器（如 .a1p-poster-wrap）。getData() 在叫出當下回最新封面資料
 // （tags/metaTags），故背景補抓/升級後的新 tag 也讀得到。無 tag → 不攔截、照常顯示瀏覽器選單。
 export function attachCoverTagsOverlay(parentEl, getData) {
   if (!parentEl || parentEl._a1pTagsBound) return;
   parentEl._a1pTagsBound = true;
   let overlay = null;
+  let pressTimer = null;
+  let docCloser = null;
+  let sx = 0;
+  let sy = 0;
+  let lastType = 'mouse';
+
+  const tagsOf = () => {
+    const d = typeof getData === 'function' ? getData() : getData;
+    return { meta: (d && d.metaTags) || [], tags: (d && d.tags) || [] };
+  };
+  const disarm = () => {
+    if (docCloser) {
+      document.removeEventListener('click', docCloser, true);
+      docCloser = null;
+    }
+  };
   const hide = () => {
     if (overlay) {
       overlay.remove();
       overlay = null;
     }
+    disarm();
   };
-  parentEl.addEventListener('contextmenu', (e) => {
-    const data = typeof getData === 'function' ? getData() : getData;
-    const meta = (data && data.metaTags) || [];
-    const tags = (data && data.tags) || [];
-    if (!meta.length && !tags.length) return; // 無 tag → 不攔截
-    e.preventDefault();
+  // 手機開啟後，「點任意處關閉」：以擷取階段攔截下一次 click → 關閉並吞掉該次點擊（避免關閉的點擊又觸發導航）。
+  const armTapAnywhere = () => {
+    if (docCloser) return;
+    docCloser = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      hide();
+    };
+    document.addEventListener('click', docCloser, true);
+  };
+  const show = () => {
+    const { meta, tags } = tagsOf();
+    if (!meta.length && !tags.length) return false;
     hide();
     overlay = document.createElement('div');
     overlay.className = 'a1p-cover-tags';
-    const chips = [
+    overlay.innerHTML = `<div class="a1p-cover-tags-inner">${[
       ...meta.map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
       ...tags.map((t) => `<span class="a1p-cover-tag">${escapeHtml(t)}</span>`),
-    ].join('');
-    overlay.innerHTML = `<div class="a1p-cover-tags-inner">${chips}</div>`;
-    parentEl.appendChild(overlay);
-  });
+    ].join('')}</div>`;
+    parentEl.appendChild(overlay); // 疊在封面上（z-index 高）→ 蓋住圖、點擊不會誤觸原本的點封面導航
+    return true;
+  };
+
+  // 桌機：右鍵叫出、滑鼠移開消失
   parentEl.addEventListener('mouseleave', hide);
+  parentEl.addEventListener('contextmenu', (e) => {
+    const { meta, tags } = tagsOf();
+    if (!meta.length && !tags.length) return; // 無 tag → 照常顯示原生選單
+    e.preventDefault(); // 抑制原生選單（桌機右鍵 / 手機長按的圖片選單）
+    if (lastType !== 'touch') show(); // 觸控長按交給計時器，避免與 contextmenu 雙觸發
+  });
+
+  // 手機：長按叫出、點任意處關閉
+  const cancelTimer = () => {
+    if (pressTimer) {
+      clearTimeout(pressTimer);
+      pressTimer = null;
+    }
+  };
+  parentEl.addEventListener('pointerdown', (e) => {
+    lastType = e.pointerType;
+    if (e.pointerType !== 'touch') return;
+    sx = e.clientX;
+    sy = e.clientY;
+    cancelTimer();
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      show(); // 手指仍按著時叫出
+    }, 480);
+  });
+  parentEl.addEventListener('pointermove', (e) => {
+    if (pressTimer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancelTimer(); // 移動＝捲動 → 取消長按
+  });
+  const onUp = () => {
+    cancelTimer();
+    // 叫出的這一按放開「之後」（setTimeout 讓本次手勢的 click 先過）才布署「點任意處關」，避免立即關掉。
+    if (overlay && lastType === 'touch') setTimeout(armTapAnywhere, 0);
+  };
+  parentEl.addEventListener('pointerup', onUp);
+  parentEl.addEventListener('pointercancel', onUp);
 }
 
 // ---- 低信心候選選擇 ----

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.44
+// @version      0.6.45
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -1082,7 +1082,8 @@ body.a1p-grid-on .a1p-grid-table tbody td{display:block;border:none!important;pa
   font-size:12px;color:#9aa0a6;background:transparent!important;text-align:left}
 body.a1p-grid-on .a1p-grid-table tbody td:first-child{padding:0}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(n+3){display:none}
-body.a1p-grid-on .a1p-grid-table .a1p-poster{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#2a2a30}
+body.a1p-grid-on .a1p-grid-table .a1p-poster{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#2a2a30;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body.a1p-grid-on .a1p-grid-table tbody td:first-child a{display:block;padding:6px 8px 2px;color:#e8e8ea;
   font-weight:600;font-size:13px;line-height:1.3;text-decoration:none}
 body.a1p-grid-on .a1p-grid-table tbody td:nth-child(2){padding:0 8px 8px;color:#7aa2f7}
@@ -1242,29 +1243,83 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     if (!parentEl || parentEl._a1pTagsBound) return;
     parentEl._a1pTagsBound = true;
     let overlay = null;
+    let pressTimer = null;
+    let docCloser = null;
+    let sx = 0;
+    let sy = 0;
+    let lastType = "mouse";
+    const tagsOf = () => {
+      const d = typeof getData === "function" ? getData() : getData;
+      return { meta: d && d.metaTags || [], tags: d && d.tags || [] };
+    };
+    const disarm = () => {
+      if (docCloser) {
+        document.removeEventListener("click", docCloser, true);
+        docCloser = null;
+      }
+    };
     const hide = () => {
       if (overlay) {
         overlay.remove();
         overlay = null;
       }
+      disarm();
     };
-    parentEl.addEventListener("contextmenu", (e) => {
-      const data = typeof getData === "function" ? getData() : getData;
-      const meta = data && data.metaTags || [];
-      const tags = data && data.tags || [];
-      if (!meta.length && !tags.length) return;
-      e.preventDefault();
+    const armTapAnywhere = () => {
+      if (docCloser) return;
+      docCloser = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        hide();
+      };
+      document.addEventListener("click", docCloser, true);
+    };
+    const show = () => {
+      const { meta, tags } = tagsOf();
+      if (!meta.length && !tags.length) return false;
       hide();
       overlay = document.createElement("div");
       overlay.className = "a1p-cover-tags";
-      const chips = [
+      overlay.innerHTML = `<div class="a1p-cover-tags-inner">${[
         ...meta.map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
         ...tags.map((t) => `<span class="a1p-cover-tag">${escapeHtml(t)}</span>`)
-      ].join("");
-      overlay.innerHTML = `<div class="a1p-cover-tags-inner">${chips}</div>`;
+      ].join("")}</div>`;
       parentEl.appendChild(overlay);
-    });
+      return true;
+    };
     parentEl.addEventListener("mouseleave", hide);
+    parentEl.addEventListener("contextmenu", (e) => {
+      const { meta, tags } = tagsOf();
+      if (!meta.length && !tags.length) return;
+      e.preventDefault();
+      if (lastType !== "touch") show();
+    });
+    const cancelTimer = () => {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    };
+    parentEl.addEventListener("pointerdown", (e) => {
+      lastType = e.pointerType;
+      if (e.pointerType !== "touch") return;
+      sx = e.clientX;
+      sy = e.clientY;
+      cancelTimer();
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        show();
+      }, 480);
+    });
+    parentEl.addEventListener("pointermove", (e) => {
+      if (pressTimer && (Math.abs(e.clientX - sx) > 10 || Math.abs(e.clientY - sy) > 10)) cancelTimer();
+    });
+    const onUp = () => {
+      cancelTimer();
+      if (overlay && lastType === "touch") setTimeout(armTapAnywhere, 0);
+    };
+    parentEl.addEventListener("pointerup", onUp);
+    parentEl.addEventListener("pointercancel", onUp);
   }
   function renderCoverPicker(mountEl, ranked, parsed, onPick) {
     injectStyles();
