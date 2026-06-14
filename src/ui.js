@@ -95,6 +95,13 @@ body.a1p-grid-on .a1p-cover-uncertain{display:flex;align-items:center;gap:3px;po
 body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bottom:6px;z-index:2;
   pointer-events:none;background:#000a;color:#ffd24a;font-size:12px;font-weight:700;line-height:1;
   padding:3px 7px;border-radius:99px;backdrop-filter:blur(2px)}
+/* 右鍵封面 → TAG 疊層（metaTags 藍底在前、tags 灰底在後）；滑鼠移開即移除。覆滿封面、超出可捲動 */
+.a1p-cover-tags{position:absolute;inset:0;z-index:6;background:#0b0b0ef2;overflow:auto;
+  padding:8px;box-sizing:border-box;backdrop-filter:blur(2px)}
+.a1p-cover-tags-inner{display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start}
+.a1p-cover-tag{font-size:11px;line-height:1.35;padding:2px 7px;border-radius:99px;white-space:nowrap;
+  background:#2a2a30;color:#cfd2d8;border:1px solid #3a3a42}
+.a1p-cover-tag.meta{background:#1d3a5f;color:#bcd9ff;border-color:#2f5a8f;font-weight:600}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
@@ -346,6 +353,38 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
     </div>`;
   mountEl.parentNode.insertBefore(card, mountEl);
   card.querySelector('.a1p-change').onclick = () => onChange && onChange();
+}
+
+// 右鍵封面圖 → 在圖上疊出 TAG（metaTags 在前、tags 在後）；滑鼠移開即消失。
+// parentEl 須為 position:relative 的容器（如 .a1p-poster-wrap）。getData() 在右鍵當下回最新封面資料
+// （tags/metaTags），故背景補抓/升級後的新 tag 也讀得到。無 tag → 不攔截、照常顯示瀏覽器選單。
+export function attachCoverTagsOverlay(parentEl, getData) {
+  if (!parentEl || parentEl._a1pTagsBound) return;
+  parentEl._a1pTagsBound = true;
+  let overlay = null;
+  const hide = () => {
+    if (overlay) {
+      overlay.remove();
+      overlay = null;
+    }
+  };
+  parentEl.addEventListener('contextmenu', (e) => {
+    const data = typeof getData === 'function' ? getData() : getData;
+    const meta = (data && data.metaTags) || [];
+    const tags = (data && data.tags) || [];
+    if (!meta.length && !tags.length) return; // 無 tag → 不攔截
+    e.preventDefault();
+    hide();
+    overlay = document.createElement('div');
+    overlay.className = 'a1p-cover-tags';
+    const chips = [
+      ...meta.map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
+      ...tags.map((t) => `<span class="a1p-cover-tag">${escapeHtml(t)}</span>`),
+    ].join('');
+    overlay.innerHTML = `<div class="a1p-cover-tags-inner">${chips}</div>`;
+    parentEl.appendChild(overlay);
+  });
+  parentEl.addEventListener('mouseleave', hide);
 }
 
 // ---- 低信心候選選擇 ----

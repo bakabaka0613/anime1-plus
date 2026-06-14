@@ -23,7 +23,7 @@ import {
 } from './util.js';
 import { fetchLatestEpMap } from './animelist.js';
 import { enqueue } from './coverQueue.js';
-import { injectStyles } from './ui.js';
+import { injectStyles, attachCoverTagsOverlay } from './ui.js';
 
 // 18 禁番（anime1.pw 連結）統一封面：自包含 SVG data URI，不依賴網路、不查 Bangumi。
 const ADULT_COVER =
@@ -250,6 +250,7 @@ export function initListPage() {
     wrap.className = 'a1p-poster-wrap';
     wrap.appendChild(img);
     nameTd.insertBefore(wrap, nameTd.firstChild);
+    attachCoverTagsOverlay(wrap, () => getCover(ref.key)); // 右鍵封面 → 疊出 TAG（讀當下最新快取）
 
     const cached = getCover(ref.key);
     if (cached && cached.cover) {
