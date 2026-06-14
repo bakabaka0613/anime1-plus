@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.46
+// @version      0.6.47
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -976,7 +976,8 @@
 .a1p-thumb-unknown{border:1px dashed #6a6a72}
 /* 海報容器：角標（待確認／評分）的定位基準。原始列表模式同封面一起隱藏 */
 .a1p-poster-wrap{display:none}
-body.a1p-grid-on .a1p-poster-wrap{display:block;position:relative}
+body.a1p-grid-on .a1p-poster-wrap{display:block;position:relative;
+  -webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 /* 封面待確認角標：低信心仍放圖，左上角標提示，誘導點進分類頁重新比對／手選 */
 .a1p-cover-uncertain{display:none}
 body.a1p-grid-on .a1p-cover-uncertain{display:flex;align-items:center;gap:3px;position:absolute;
@@ -990,7 +991,8 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
 /* 右鍵封面 → TAG 疊層（metaTags 藍底在前、tags 灰底在後）；滑鼠移開即移除。覆滿封面、超出可捲動。
    淡入漸暗（animation），底色不過暗（半透明＋模糊）；tag 置中、平均分散好看 */
 .a1p-cover-tags{position:absolute;inset:0;z-index:6;background:rgba(10,10,14,.62);overflow:auto;
-  padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both}
+  padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both;
+  -webkit-user-select:none;user-select:none}
 @keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
 .a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
@@ -1278,6 +1280,8 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       const { meta, tags } = tagsOf();
       if (!meta.length && !tags.length) return false;
       hide();
+      const sel = window.getSelection && window.getSelection();
+      if (sel && sel.removeAllRanges) sel.removeAllRanges();
       overlay = document.createElement("div");
       overlay.className = "a1p-cover-tags";
       overlay.innerHTML = `<div class="a1p-cover-tags-inner">${[
@@ -1287,6 +1291,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       parentEl.appendChild(overlay);
       return true;
     };
+    parentEl.addEventListener("selectstart", (e) => e.preventDefault());
     parentEl.addEventListener("mouseleave", hide);
     parentEl.addEventListener("contextmenu", (e) => {
       const { meta, tags } = tagsOf();
