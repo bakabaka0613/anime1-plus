@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.53
+// @version      0.6.54
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -916,6 +916,7 @@
 .a1p-badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:12px;margin-right:6px}
 .a1p-badge.ok{background:#1e3a24;color:#7ee29a}
 .a1p-badge.warn{background:#3a2f1e;color:#e2c47e}
+.a1p-badge.season{background:#23252b;color:#b9c0c9}
 .a1p-btn{cursor:pointer;border:1px solid #45464c;background:#26272c;color:#e8e8ea;
   border-radius:6px;padding:4px 10px;font-size:13px;margin-right:6px}
 .a1p-btn:hover{background:#303138}
@@ -1245,6 +1246,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const badge = data.manual ? '<span class="a1p-badge ok">已手動確認</span>' : `<span class="a1p-badge ${data.score >= 0.6 ? "ok" : "warn"}">信心 ${Math.round((data.score || 0) * 100)}%</span>`;
     const mainTitle = data.local || data.name_cn || data.name || "";
     const subName = data.name && data.name !== mainTitle ? data.name : "";
+    const seasonBadge = data.bucket ? `<span class="a1p-badge season">📅 ${escapeHtml(data.bucket)}</span>` : "";
     const tagChips = [
       ...(data.metaTags || []).map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
       ...(data.tags || []).map((t) => `<span class="a1p-cover-tag">${escapeHtml(t)}</span>`)
@@ -1255,7 +1257,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     <div class="a1p-meta">
       <p class="a1p-name">${escapeHtml(mainTitle)}</p>
       ${subName ? `<p class="a1p-sub">${escapeHtml(subName)}</p>` : ""}
-      <div>${badge}</div>
+      <div>${badge}${seasonBadge}</div>
       <div style="margin-top:8px">
         <a class="a1p-btn" href="${BGM(data.subjectId)}" target="_blank" rel="noreferrer">Bangumi 條目</a>
         <button class="a1p-btn a1p-change">換一個</button>

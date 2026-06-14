@@ -24,6 +24,7 @@ export function injectStyles() {
 .a1p-badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:12px;margin-right:6px}
 .a1p-badge.ok{background:#1e3a24;color:#7ee29a}
 .a1p-badge.warn{background:#3a2f1e;color:#e2c47e}
+.a1p-badge.season{background:#23252b;color:#b9c0c9}
 .a1p-btn{cursor:pointer;border:1px solid #45464c;background:#26272c;color:#e8e8ea;
   border-radius:6px;padding:4px 10px;font-size:13px;margin-right:6px}
 .a1p-btn:hover{background:#303138}
@@ -367,6 +368,8 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
   // 副標只放日文原名（繁體主標已涵蓋中文名，簡體 name_cn 與主標重複 → 不再顯示）；與主標相同則略過。
   const mainTitle = data.local || data.name_cn || data.name || '';
   const subName = data.name && data.name !== mainTitle ? data.name : '';
+  // 放送季（快取已存 bucket，如「2024冬」）→ 信心 badge 旁顯示一枚中性 badge。
+  const seasonBadge = data.bucket ? `<span class="a1p-badge season">📅 ${escapeHtml(data.bucket)}</span>` : '';
   // 快取裡有 tag → 在卡片內平鋪顯示（metaTags 藍底在前、tags 灰底在後，與封面疊層一致）。無 tag → 不輸出此列。
   const tagChips = [
     ...(data.metaTags || []).map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
@@ -378,7 +381,7 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
     <div class="a1p-meta">
       <p class="a1p-name">${escapeHtml(mainTitle)}</p>
       ${subName ? `<p class="a1p-sub">${escapeHtml(subName)}</p>` : ''}
-      <div>${badge}</div>
+      <div>${badge}${seasonBadge}</div>
       <div style="margin-top:8px">
         <a class="a1p-btn" href="${BGM(data.subjectId)}" target="_blank" rel="noreferrer">Bangumi 條目</a>
         <button class="a1p-btn a1p-change">換一個</button>
