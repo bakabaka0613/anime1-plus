@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.37
+// @version      0.6.38
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -231,6 +231,9 @@
     const str = String(s || "");
     const conv = ccConverter("cn", "tw");
     return conv ? conv(str) : str;
+  }
+  function isAdultLink(href) {
+    return /anime1\.pw/i.test(String(href || ""));
   }
   function titleSearchSegments(baseName) {
     const k = String(baseName || "").trim();
@@ -2375,6 +2378,9 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   }
 
   // src/list.js
+  var ADULT_COVER = "data:image/svg+xml," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="450" viewBox="0 0 300 450"><rect width="300" height="450" fill="#1a1a1d"/><rect x="8" y="8" width="284" height="434" rx="14" fill="none" stroke="#e03e3e" stroke-width="6"/><circle cx="150" cy="178" r="76" fill="none" stroke="#e03e3e" stroke-width="9"/><text x="150" y="206" font-family="Arial,sans-serif" font-size="74" font-weight="bold" fill="#e03e3e" text-anchor="middle">18+</text><text x="150" y="322" font-family="'Microsoft JhengHei',sans-serif" font-size="54" font-weight="bold" fill="#f5f5f5" text-anchor="middle">18禁</text></svg>`
+  );
   var currentDt = null;
   var initialLen = null;
   var activeBucket = null;
@@ -2386,6 +2392,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
   };
   function animeRef(a) {
     const href = a.getAttribute("href") || "";
+    if (isAdultLink(href)) return null;
     let dec = href;
     try {
       dec = decodeURIComponent(href);
@@ -2501,10 +2508,28 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       if (!nameTd) return;
       const a = nameTd.querySelector("a[href]");
       if (!a) return;
-      const ref = animeRef(a);
-      if (!ref) return;
       const name = (a.textContent || "").trim();
       if (!name) return;
+      if (isAdultLink(a.href)) {
+        seen.add(tr);
+        tr.classList.add("a1p-card-row");
+        const img2 = document.createElement("img");
+        img2.className = "a1p-poster";
+        img2.referrerPolicy = "no-referrer";
+        img2.alt = name;
+        img2.src = ADULT_COVER;
+        img2.style.cursor = "pointer";
+        img2.addEventListener("click", () => {
+          window.location.href = a.href;
+        });
+        const wrap2 = document.createElement("div");
+        wrap2.className = "a1p-poster-wrap";
+        wrap2.appendChild(img2);
+        nameTd.insertBefore(wrap2, nameTd.firstChild);
+        return;
+      }
+      const ref = animeRef(a);
+      if (!ref) return;
       seen.add(tr);
       tr.classList.add("a1p-card-row");
       const epTd = nameTd.nextElementSibling;

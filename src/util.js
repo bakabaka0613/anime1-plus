@@ -28,6 +28,12 @@ export function toTraditional(s) {
   return conv ? conv(str) : str;
 }
 
+// 18 禁特殊番：anime1 把成人向內容拆到 anime1.pw 子站，首頁清單以 <a href="https://anime1.pw/..."> 出現。
+// 偵測整個網域（不限 ?cat= 形式），對未來路徑變動較穩；本站 anime1.me 連結不會誤判。
+export function isAdultLink(href) {
+  return /anime1\.pw/i.test(String(href || ''));
+}
+
 // Bangumi 全文搜尋會被「主名以外的雜訊」帶偏而漏掉正確條目，兩種真實情況：
 //   尾端破折號/英文副標——「随兴旅 -That's Journey-」搜不到，只搜「随兴旅」才排第一；
 //   前綴 franchise 名——「銀魂 3年Z班銀八老師」搜回一堆銀魂正篇，去前綴搜「3年Z班銀八老師」才排第一。
