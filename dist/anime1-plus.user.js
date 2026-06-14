@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.47
+// @version      0.6.48
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -994,6 +994,8 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both;
   -webkit-user-select:none;user-select:none}
 @keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
+.a1p-cover-tags.a1p-cover-tags-out{animation:a1p-tags-fadeout .18s ease both;pointer-events:none}
+@keyframes a1p-tags-fadeout{from{opacity:1}to{opacity:0}}
 .a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
 .a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:99px;white-space:nowrap;
@@ -1260,12 +1262,19 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         docCloser = null;
       }
     };
-    const hide = () => {
-      if (overlay) {
-        overlay.remove();
-        overlay = null;
-      }
+    const removeNow = () => {
+      parentEl.querySelectorAll(".a1p-cover-tags").forEach((n) => n.remove());
+      overlay = null;
       disarm();
+    };
+    const hide = () => {
+      disarm();
+      if (!overlay) return;
+      const el = overlay;
+      overlay = null;
+      el.classList.add("a1p-cover-tags-out");
+      el.addEventListener("animationend", () => el.remove(), { once: true });
+      setTimeout(() => el.remove(), 260);
     };
     const armTapAnywhere = () => {
       if (docCloser) return;
@@ -1279,7 +1288,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const show = () => {
       const { meta, tags } = tagsOf();
       if (!meta.length && !tags.length) return false;
-      hide();
+      removeNow();
       const sel = window.getSelection && window.getSelection();
       if (sel && sel.removeAllRanges) sel.removeAllRanges();
       overlay = document.createElement("div");

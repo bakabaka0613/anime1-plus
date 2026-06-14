@@ -102,6 +102,8 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both;
   -webkit-user-select:none;user-select:none}
 @keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
+.a1p-cover-tags.a1p-cover-tags-out{animation:a1p-tags-fadeout .18s ease both;pointer-events:none}
+@keyframes a1p-tags-fadeout{from{opacity:1}to{opacity:0}}
 .a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
 .a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:99px;white-space:nowrap;
@@ -388,12 +390,21 @@ export function attachCoverTagsOverlay(parentEl, getData) {
       docCloser = null;
     }
   };
-  const hide = () => {
-    if (overlay) {
-      overlay.remove();
-      overlay = null;
-    }
+  // 即時移除（含尚在淡出的殘留）：供 show 重建前清場，避免新舊疊層同框。
+  const removeNow = () => {
+    parentEl.querySelectorAll('.a1p-cover-tags').forEach((n) => n.remove());
+    overlay = null;
     disarm();
+  };
+  // 使用者關閉：先跑淡出動畫，結束（或後備逾時）才移除。
+  const hide = () => {
+    disarm();
+    if (!overlay) return;
+    const el = overlay;
+    overlay = null; // 立即釋放，讓重入的 hide／後續 show 不重複處理同一節點
+    el.classList.add('a1p-cover-tags-out');
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+    setTimeout(() => el.remove(), 260); // 後備：動畫被打斷也保證移除
   };
   // 手機開啟後，「點任意處關閉」：以擷取階段攔截下一次 click → 關閉並吞掉該次點擊（避免關閉的點擊又觸發導航）。
   const armTapAnywhere = () => {
@@ -408,7 +419,7 @@ export function attachCoverTagsOverlay(parentEl, getData) {
   const show = () => {
     const { meta, tags } = tagsOf();
     if (!meta.length && !tags.length) return false;
-    hide();
+    removeNow(); // 清場（含淡出中的殘留），不淡出，立刻換新
     const sel = window.getSelection && window.getSelection(); // 長按常會順手選取附近文字 → 清掉
     if (sel && sel.removeAllRanges) sel.removeAllRanges();
     overlay = document.createElement('div');
