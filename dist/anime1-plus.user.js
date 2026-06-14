@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.48
+// @version      0.6.49
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -990,15 +990,24 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   padding:3px 7px;border-radius:99px;backdrop-filter:blur(2px)}
 /* 右鍵封面 → TAG 疊層（metaTags 藍底在前、tags 灰底在後）；滑鼠移開即移除。覆滿封面、超出可捲動。
    淡入漸暗（animation），底色不過暗（半透明＋模糊）；tag 置中、平均分散好看 */
-.a1p-cover-tags{position:absolute;inset:0;z-index:6;background:rgba(10,10,14,.62);overflow:auto;
-  padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both;
-  -webkit-user-select:none;user-select:none}
+.a1p-cover-tags{position:absolute;inset:0;z-index:6;background:rgba(10,10,14,.62);
+  overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;
+  padding:12px 10px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both;
+  -webkit-user-select:none;user-select:none;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.32) transparent}
+/* 美化垂直捲動條（WebKit）：細、半透明、圓角，hover 加亮 */
+.a1p-cover-tags::-webkit-scrollbar{width:6px}
+.a1p-cover-tags::-webkit-scrollbar-track{background:transparent;margin:6px 0}
+.a1p-cover-tags::-webkit-scrollbar-thumb{background:rgba(255,255,255,.3);border-radius:99px}
+.a1p-cover-tags::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.5)}
 @keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
 .a1p-cover-tags.a1p-cover-tags-out{animation:a1p-tags-fadeout .18s ease both;pointer-events:none}
 @keyframes a1p-tags-fadeout{from{opacity:1}to{opacity:0}}
 .a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
-.a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:99px;white-space:nowrap;
+/* 長 tag 在卡片過窄時於 pill 內換行（不撐出水平捲動）；max-width 限制不超出容器 */
+.a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:12px;text-align:center;
+  white-space:normal;word-break:break-word;max-width:100%;box-sizing:border-box;
   background:rgba(28,30,40,.92);color:#f1f3f9;border:1px solid rgba(255,255,255,.2);
   box-shadow:0 1px 3px rgba(0,0,0,.36)}
 .a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(180,202,255,.6);
