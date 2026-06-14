@@ -15,6 +15,8 @@ export function injectStyles() {
 .a1p-card{display:flex;gap:12px;align-items:flex-start;margin:10px 0;padding:12px;
   background:#1b1b1f;border:1px solid #33343a;border-radius:10px;color:#e8e8ea;font-size:14px}
 .a1p-card img{width:96px;height:136px;object-fit:cover;border-radius:6px;flex:none;background:#2a2a30}
+/* 電腦端（站方斷點 769px）封面放大 1.5 倍 */
+@media (min-width:769px){.a1p-card img{width:144px;height:204px}}
 .a1p-card .a1p-meta{flex:1;min-width:0}
 .a1p-card .a1p-name{font-weight:700;font-size:16px;margin:0 0 4px}
 .a1p-card .a1p-sub{color:#9aa0a6;margin:0 0 6px}
@@ -120,8 +122,9 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   box-shadow:0 1px 3px rgba(0,0,0,.36)}
 .a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(196,214,255,.85);
   background:linear-gradient(135deg,#4f6ee0,#8a4fd6)}
-/* 動畫資訊卡內平鋪的 TAG 列（chip 樣式重用 .a1p-cover-tag）*/
-.a1p-card-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+/* 動畫資訊卡內平鋪的 TAG 列（chip 樣式重用 .a1p-cover-tag，但較小）*/
+.a1p-card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.a1p-card-tags .a1p-cover-tag{font-size:11px;padding:2px 8px;border-radius:10px}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
