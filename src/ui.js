@@ -120,6 +120,8 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   box-shadow:0 1px 3px rgba(0,0,0,.36)}
 .a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(196,214,255,.85);
   background:linear-gradient(135deg,#4f6ee0,#8a4fd6)}
+/* 動畫資訊卡內平鋪的 TAG 列（chip 樣式重用 .a1p-cover-tag）*/
+.a1p-card-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
@@ -359,6 +361,12 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
     ? '<span class="a1p-badge ok">已手動確認</span>'
     : `<span class="a1p-badge ${data.score >= 0.6 ? 'ok' : 'warn'}">信心 ${Math.round((data.score || 0) * 100)}%</span>`;
   const bgmNames = [data.name_cn, data.name].filter(Boolean).join(' · ');
+  // 快取裡有 tag → 在卡片內平鋪顯示（metaTags 藍底在前、tags 灰底在後，與封面疊層一致）。無 tag → 不輸出此列。
+  const tagChips = [
+    ...(data.metaTags || []).map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
+    ...(data.tags || []).map((t) => `<span class="a1p-cover-tag">${escapeHtml(t)}</span>`),
+  ].join('');
+  const tagsRow = tagChips ? `<div class="a1p-card-tags">${tagChips}</div>` : '';
   card.innerHTML = `
     <img referrerpolicy="no-referrer" src="${data.cover || ''}" alt="">
     <div class="a1p-meta">
@@ -369,6 +377,7 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
         <a class="a1p-btn" href="${BGM(data.subjectId)}" target="_blank" rel="noreferrer">Bangumi 條目</a>
         <button class="a1p-btn a1p-change">換一個</button>
       </div>
+      ${tagsRow}
     </div>`;
   mountEl.parentNode.insertBefore(card, mountEl);
   card.querySelector('.a1p-change').onclick = () => onChange && onChange();
