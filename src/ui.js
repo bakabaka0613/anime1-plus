@@ -794,7 +794,7 @@ export function mountTrackingPanel() {
   const fab = document.createElement('button');
   fab.className = 'a1p-fab';
   fab.textContent = '📺';
-  fab.title = '追番清單（Shift+點擊 或 長按 3 秒 → 管理模式）';
+  fab.title = '追番清單（Shift+點擊 或 長按 1.5 秒 → 管理模式）';
   document.body.appendChild(fab);
 
   const panel = document.createElement('div');
@@ -819,7 +819,7 @@ export function mountTrackingPanel() {
     }
   };
 
-  // 長按 📺 三秒 → 與 Shift+點擊 等效，開啟管理模式（給無實體鍵盤/觸控裝置用）
+  // 長按 📺 1.5 秒 → 與 Shift+點擊 等效，開啟管理模式（給無實體鍵盤/觸控裝置用）
   const cancelPress = () => {
     if (pressTimer) {
       clearTimeout(pressTimer);
@@ -836,7 +836,7 @@ export function mountTrackingPanel() {
       panel.classList.add('a1p-del-mode');
       preview.style.display = 'none';
       renderPanel(panel);
-    }, 3000);
+    }, 1500);
   });
   fab.addEventListener('pointerup', cancelPress);
   fab.addEventListener('pointerleave', cancelPress);

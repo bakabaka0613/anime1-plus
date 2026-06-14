@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.45
+// @version      0.6.46
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -1596,7 +1596,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
     const fab = document.createElement("button");
     fab.className = "a1p-fab";
     fab.textContent = "📺";
-    fab.title = "追番清單（Shift+點擊 或 長按 3 秒 → 管理模式）";
+    fab.title = "追番清單（Shift+點擊 或 長按 1.5 秒 → 管理模式）";
     document.body.appendChild(fab);
     const panel = document.createElement("div");
     panel.className = "a1p-panel a1p-hide";
@@ -1633,7 +1633,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
         panel.classList.add("a1p-del-mode");
         preview.style.display = "none";
         renderPanel(panel);
-      }, 3e3);
+      }, 1500);
     });
     fab.addEventListener("pointerup", cancelPress);
     fab.addEventListener("pointerleave", cancelPress);
