@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.41
+// @version      0.6.42
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -987,13 +987,16 @@ body.a1p-grid-on .a1p-cover-uncertain{display:flex;align-items:center;gap:3px;po
 body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bottom:6px;z-index:2;
   pointer-events:none;background:#000a;color:#ffd24a;font-size:12px;font-weight:700;line-height:1;
   padding:3px 7px;border-radius:99px;backdrop-filter:blur(2px)}
-/* 右鍵封面 → TAG 疊層（metaTags 藍底在前、tags 灰底在後）；滑鼠移開即移除。覆滿封面、超出可捲動 */
-.a1p-cover-tags{position:absolute;inset:0;z-index:6;background:#0b0b0ef2;overflow:auto;
-  padding:8px;box-sizing:border-box;backdrop-filter:blur(2px)}
-.a1p-cover-tags-inner{display:flex;flex-wrap:wrap;gap:5px;align-content:flex-start}
-.a1p-cover-tag{font-size:11px;line-height:1.35;padding:2px 7px;border-radius:99px;white-space:nowrap;
-  background:#2a2a30;color:#cfd2d8;border:1px solid #3a3a42}
-.a1p-cover-tag.meta{background:#1d3a5f;color:#bcd9ff;border-color:#2f5a8f;font-weight:600}
+/* 右鍵封面 → TAG 疊層（metaTags 藍底在前、tags 灰底在後）；滑鼠移開即移除。覆滿封面、超出可捲動。
+   淡入漸暗（animation），底色不過暗（半透明＋模糊）；tag 置中、平均分散好看 */
+.a1p-cover-tags{position:absolute;inset:0;z-index:6;background:rgba(10,10,14,.62);overflow:auto;
+  padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both}
+@keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
+.a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:7px;
+  justify-content:center;align-content:center;align-items:center}
+.a1p-cover-tag{font-size:11px;line-height:1.4;padding:3px 9px;border-radius:99px;white-space:nowrap;
+  background:#2a2a30cc;color:#d3d6dc;border:1px solid #4a4a54}
+.a1p-cover-tag.meta{background:#23456fe0;color:#cfe4ff;border-color:#3f6fa8;font-weight:600}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
