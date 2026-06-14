@@ -116,9 +116,9 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
 /* 長 tag 在卡片過窄時於 pill 內換行（不撐出水平捲動）；max-width 限制不超出容器 */
 .a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:12px;text-align:center;
   white-space:normal;word-break:break-word;max-width:100%;box-sizing:border-box;
-  background:rgba(28,30,40,.92);color:#f1f3f9;border:1px solid rgba(255,255,255,.2);
+  background:rgba(28,30,40,.92);color:#f1f3f9;border:1px solid rgba(255,255,255,.42);
   box-shadow:0 1px 3px rgba(0,0,0,.36)}
-.a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(180,202,255,.6);
+.a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(196,214,255,.85);
   background:linear-gradient(135deg,#4f6ee0,#8a4fd6)}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
