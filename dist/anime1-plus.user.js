@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.42
+// @version      0.6.43
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -992,11 +992,13 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
 .a1p-cover-tags{position:absolute;inset:0;z-index:6;background:rgba(10,10,14,.62);overflow:auto;
   padding:12px;box-sizing:border-box;backdrop-filter:blur(3px);animation:a1p-tags-fade .22s ease both}
 @keyframes a1p-tags-fade{from{opacity:0}to{opacity:1}}
-.a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:7px;
+.a1p-cover-tags-inner{min-height:100%;display:flex;flex-wrap:wrap;gap:8px;
   justify-content:center;align-content:center;align-items:center}
-.a1p-cover-tag{font-size:11px;line-height:1.4;padding:3px 9px;border-radius:99px;white-space:nowrap;
-  background:#2a2a30cc;color:#d3d6dc;border:1px solid #4a4a54}
-.a1p-cover-tag.meta{background:#23456fe0;color:#cfe4ff;border-color:#3f6fa8;font-weight:600}
+.a1p-cover-tag{font-size:12.5px;line-height:1.4;padding:4px 11px;border-radius:99px;white-space:nowrap;
+  background:rgba(56,58,74,.82);color:#e3e6ee;border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 1px 3px rgba(0,0,0,.28)}
+.a1p-cover-tag.meta{font-weight:600;color:#f2f6ff;border-color:rgba(160,188,255,.45);
+  background:linear-gradient(135deg,#5b78d6,#7c5cc4)}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
