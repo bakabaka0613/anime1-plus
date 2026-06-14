@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anime1.me Plus
 // @namespace    https://github.com/bakabaka0613/anime1-plus
-// @version      0.6.39
+// @version      0.6.40
 // @description  Anime1.me 增強：自動封面圖、觀看記錄、續播、自動下一集、網頁全螢幕、快捷鍵
 // @author       bakabaka0613
 // @license      MIT
@@ -560,9 +560,37 @@
     else season = "秋";
     return `${year}${season}`;
   }
-  function pickTagNames(tags, n = 10) {
-    if (!Array.isArray(tags)) return [];
-    return tags.filter((t) => t && typeof t.name === "string" && t.name.trim()).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, n).map((t) => t.name.trim());
+  function tagNamesFrom(raw) {
+    const arr = Array.isArray(raw) ? raw : [];
+    if (arr.length && typeof arr[0] === "object") {
+      return arr.filter((t) => t && typeof t.name === "string" && t.name.trim()).slice().sort((a, b) => (b.count || 0) - (a.count || 0)).map((t) => t.name.trim());
+    }
+    return arr.filter((t) => typeof t === "string" && t.trim()).map((t) => t.trim());
+  }
+  var META_TAG_DROP = /* @__PURE__ */ new Set(["TV", "日本"]);
+  function isTimeTag(s) {
+    return /^\d{4}$/.test(s) || /^\d{4}年(\d{1,2}月)?$/.test(s) || /^\d{1,2}月$/.test(s) || /^\d{4}\s*[春夏秋冬]$/.test(s);
+  }
+  function buildCoverTags(rawTags, rawMetaTags, n = 10) {
+    const metaTrad = (Array.isArray(rawMetaTags) ? rawMetaTags : []).map((t) => toTraditional(String(t == null ? "" : t).trim())).filter(Boolean);
+    const metaAll = new Set(metaTrad);
+    const metaTags = [];
+    const metaSeen = /* @__PURE__ */ new Set();
+    for (const name of metaTrad) {
+      if (META_TAG_DROP.has(name) || metaSeen.has(name)) continue;
+      metaSeen.add(name);
+      metaTags.push(name);
+    }
+    const tags = [];
+    const tagSeen = /* @__PURE__ */ new Set();
+    for (const raw of tagNamesFrom(rawTags)) {
+      const name = toTraditional(raw);
+      if (!name || name === "TV" || isTimeTag(name) || metaAll.has(name) || tagSeen.has(name)) continue;
+      tagSeen.add(name);
+      tags.push(name);
+      if (tags.length >= n) break;
+    }
+    return { tags, metaTags };
   }
   function needsCoverMeta(cover, now, retryMs = 7 * 24 * 60 * 60 * 1e3) {
     if (!cover || !cover.subjectId || cover.date) return false;
@@ -2294,10 +2322,10 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
       score: scored.score,
       // 注意：這是我們的比對信心分數，非 Bangumi 評分
       // 放送日／放送季桶／標籤：v0 搜尋結果本就帶 date/tags/meta_tags，順手存進快取，零額外請求。
+      // tags/metaTags 經 buildCoverTags 清洗（轉繁＋去重＋過濾時間/泛用/重疊）。
       date: s.date || s.air_date || null,
       bucket: dateToBucket(s.date || s.air_date),
-      tags: pickTagNames(s.tags),
-      metaTags: Array.isArray(s.meta_tags) ? s.meta_tags : [],
+      ...buildCoverTags(s.tags, s.meta_tags),
       manual
     };
   }
@@ -2422,8 +2450,7 @@ body.a1p-webfull-lock .a1p-panel{display:none!important}
           // 保留既有 subjectId/cover/name/score…，僅補充下列欄位
           date: m.date,
           bucket: dateToBucket(m.date),
-          tags: pickTagNames(m.tags),
-          metaTags: Array.isArray(m.meta_tags) ? m.meta_tags : []
+          ...buildCoverTags(m.tags, m.meta_tags)
         });
       } else {
         setCover(catId, { ...fresh, metaTriedAt: Date.now() });

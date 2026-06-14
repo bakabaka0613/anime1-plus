@@ -11,7 +11,7 @@ import {
   evaluateRecheckLease,
   pickByHint,
   dateToBucket,
-  pickTagNames,
+  buildCoverTags,
   needsCoverMeta,
   seasonBuckets,
 } from './util.js';
@@ -69,10 +69,10 @@ export function toCoverData(scored, manual = false) {
     rating: (s.rating && s.rating.score) || null, // Bangumi 用戶評分（0–10），0/無 → null
     score: scored.score, // 注意：這是我們的比對信心分數，非 Bangumi 評分
     // 放送日／放送季桶／標籤：v0 搜尋結果本就帶 date/tags/meta_tags，順手存進快取，零額外請求。
+    // tags/metaTags 經 buildCoverTags 清洗（轉繁＋去重＋過濾時間/泛用/重疊）。
     date: s.date || s.air_date || null,
     bucket: dateToBucket(s.date || s.air_date),
-    tags: pickTagNames(s.tags),
-    metaTags: Array.isArray(s.meta_tags) ? s.meta_tags : [],
+    ...buildCoverTags(s.tags, s.meta_tags),
     manual,
   };
 }
@@ -248,8 +248,7 @@ export function enqueueMetaBackfill(catId) {
         ...fresh, // 保留既有 subjectId/cover/name/score…，僅補充下列欄位
         date: m.date,
         bucket: dateToBucket(m.date),
-        tags: pickTagNames(m.tags),
-        metaTags: Array.isArray(m.meta_tags) ? m.meta_tags : [],
+        ...buildCoverTags(m.tags, m.meta_tags),
       });
     } else {
       setCover(catId, { ...fresh, metaTriedAt: Date.now() }); // 取不到 → 7 天內不重試（用最新值）

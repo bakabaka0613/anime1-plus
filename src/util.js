@@ -479,15 +479,60 @@ export function dateToBucket(dateStr) {
   return `${year}${season}`;
 }
 
-// 從 Bangumi tags（[{name,count}]，API 已依 count 排序）取前 n 個 tag 名稱。防呆排序＋去空白。
+// 由 tag 陣列抽出名稱清單（依熱度排序）。容兩種輸入：
+//   - Bangumi 原始 [{name,count}]（依 count 由高到低排）；
+//   - 已存的清洗結果 ['name',…]（保持既有順序）。後者讓 buildCoverTags 可離線重清既有快取。
+function tagNamesFrom(raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  if (arr.length && typeof arr[0] === 'object') {
+    return arr
+      .filter((t) => t && typeof t.name === 'string' && t.name.trim())
+      .slice()
+      .sort((a, b) => (b.count || 0) - (a.count || 0))
+      .map((t) => t.name.trim());
+  }
+  return arr.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim());
+}
+
+// 從 Bangumi tags 取前 n 個 tag 名稱（依熱度）。防呆排序＋去空白。
 export function pickTagNames(tags, n = 10) {
-  if (!Array.isArray(tags)) return [];
-  return tags
-    .filter((t) => t && typeof t.name === 'string' && t.name.trim())
-    .slice()
-    .sort((a, b) => (b.count || 0) - (a.count || 0))
-    .slice(0, n)
-    .map((t) => t.name.trim());
+  return tagNamesFrom(tags).slice(0, n);
+}
+
+const META_TAG_DROP = new Set(['TV', '日本']); // metaTags 過於泛用、不存
+// 年份/月份/季度等「已知時間資訊」tag（封面已存 date/bucket，這些 tag 冗餘）：
+// '2026'、'2026年'、'2026年4月'、'4月'、'2026春' 等。錨定比對，不誤殺含數字的作品名 tag（如 AKB0048）。
+function isTimeTag(s) {
+  return /^\d{4}$/.test(s) || /^\d{4}年(\d{1,2}月)?$/.test(s) || /^\d{1,2}月$/.test(s) || /^\d{4}\s*[春夏秋冬]$/.test(s);
+}
+
+// 把 Bangumi 原始 tags/meta_tags 清洗成要存進封面快取的兩個陣列：
+//   - 都轉繁體（toTraditional；node 測試無 OpenCC → no-op，故測試用已繁化輸入）、各自去重。
+//   - metaTags：去掉 'TV'/'日本'（過於泛用）。
+//   - tags：取熱度前 n，去掉「時間資訊（年/月/季）」「'TV'」「已出現在 meta_tags 的」→ 與 metaTags 不重疊。
+// 純函式且 idempotent（對已清洗輸入再跑結果不變）→ 同一支同時用於寫入清洗與既有資料離線重清。
+export function buildCoverTags(rawTags, rawMetaTags, n = 10) {
+  const metaTrad = (Array.isArray(rawMetaTags) ? rawMetaTags : [])
+    .map((t) => toTraditional(String(t == null ? '' : t).trim()))
+    .filter(Boolean);
+  const metaAll = new Set(metaTrad); // 含 TV/日本，供 tags 去重（兩清單互斥）
+  const metaTags = [];
+  const metaSeen = new Set();
+  for (const name of metaTrad) {
+    if (META_TAG_DROP.has(name) || metaSeen.has(name)) continue;
+    metaSeen.add(name);
+    metaTags.push(name);
+  }
+  const tags = [];
+  const tagSeen = new Set();
+  for (const raw of tagNamesFrom(rawTags)) {
+    const name = toTraditional(raw);
+    if (!name || name === 'TV' || isTimeTag(name) || metaAll.has(name) || tagSeen.has(name)) continue;
+    tagSeen.add(name);
+    tags.push(name);
+    if (tags.length >= n) break;
+  }
+  return { tags, metaTags };
 }
 
 // 既有封面快取是否該背景補抓 tags/放送日：有 subjectId、尚未存 date，且 metaTriedAt 不在 retryMs 內。
