@@ -19,7 +19,8 @@ export function injectStyles() {
 @media (min-width:769px){.a1p-card img{width:144px;height:204px}}
 .a1p-card .a1p-meta{flex:1;min-width:0}
 .a1p-card .a1p-name{font-weight:700;font-size:16px;margin:0 0 4px}
-.a1p-card .a1p-sub{color:#9aa0a6;margin:0 0 6px}
+.a1p-card .a1p-sub{color:#9aa0a6;margin:0 0 6px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .a1p-badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:12px;margin-right:6px}
 .a1p-badge.ok{background:#1e3a24;color:#7ee29a}
 .a1p-badge.warn{background:#3a2f1e;color:#e2c47e}
@@ -363,7 +364,9 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
   const badge = data.manual
     ? '<span class="a1p-badge ok">已手動確認</span>'
     : `<span class="a1p-badge ${data.score >= 0.6 ? 'ok' : 'warn'}">信心 ${Math.round((data.score || 0) * 100)}%</span>`;
-  const bgmNames = [data.name_cn, data.name].filter(Boolean).join(' · ');
+  // 副標只放日文原名（繁體主標已涵蓋中文名，簡體 name_cn 與主標重複 → 不再顯示）；與主標相同則略過。
+  const mainTitle = data.local || data.name_cn || data.name || '';
+  const subName = data.name && data.name !== mainTitle ? data.name : '';
   // 快取裡有 tag → 在卡片內平鋪顯示（metaTags 藍底在前、tags 灰底在後，與封面疊層一致）。無 tag → 不輸出此列。
   const tagChips = [
     ...(data.metaTags || []).map((t) => `<span class="a1p-cover-tag meta">${escapeHtml(t)}</span>`),
@@ -373,8 +376,8 @@ export function renderCoverCard(mountEl, data, { onChange } = {}) {
   card.innerHTML = `
     <img referrerpolicy="no-referrer" src="${data.cover || ''}" alt="">
     <div class="a1p-meta">
-      <p class="a1p-name">${escapeHtml(data.local || data.name_cn || data.name || '')}</p>
-      <p class="a1p-sub">${escapeHtml(bgmNames)}</p>
+      <p class="a1p-name">${escapeHtml(mainTitle)}</p>
+      ${subName ? `<p class="a1p-sub">${escapeHtml(subName)}</p>` : ''}
       <div>${badge}</div>
       <div style="margin-top:8px">
         <a class="a1p-btn" href="${BGM(data.subjectId)}" target="_blank" rel="noreferrer">Bangumi 條目</a>
