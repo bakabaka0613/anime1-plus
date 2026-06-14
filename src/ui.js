@@ -124,9 +124,12 @@ body.a1p-grid-on .a1p-rating-badge{display:block;position:absolute;right:6px;bot
   box-shadow:0 1px 3px rgba(0,0,0,.36)}
 .a1p-cover-tag.meta{font-weight:600;color:#fff;border-color:rgba(196,214,255,.85);
   background:linear-gradient(135deg,#4f6ee0,#8a4fd6)}
-/* 動畫資訊卡內平鋪的 TAG 列（chip 樣式重用 .a1p-cover-tag，但較小）*/
-.a1p-card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
-.a1p-card-tags .a1p-cover-tag{font-size:11px;padding:2px 8px;border-radius:10px}
+/* 動畫資訊卡內平鋪的 TAG 列（chip 樣式重用 .a1p-cover-tag，但較小）。
+   截斷成最多兩排：chip 高 ~21.4px（font 11×1.4 + padding 4 + border 2），兩排+1 gap(5px)≈48px；
+   第三排起頭已超過 max-height → overflow:hidden 整排裁掉，不留半截。 */
+.a1p-card-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;max-height:48px;overflow:hidden}
+.a1p-card-tags .a1p-cover-tag{font-size:11px;line-height:1.4;padding:2px 8px;border-radius:10px;
+  white-space:nowrap}
 /* 更新提醒徽章：卡片右上角，僅卡片檢視模式定位（原始列表模式隱藏）*/
 .a1p-update-badge{display:none}
 body.a1p-grid-on .a1p-card-row{position:relative}
